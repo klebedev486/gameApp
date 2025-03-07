@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <link rel="stylesheet" href="stylesModal.css">
     <style>
 
         body {
@@ -118,6 +119,7 @@
         }
         
         
+
     </style>
 </head>
 <body>
@@ -156,6 +158,13 @@
     </div>
     <div class="player-2">
         <h2 class="player-number" id="player-2">Player 2</h2>
+    </div>
+    <div id="confirmation-modal" class="modal">
+        <div class="modal-content">
+            <p>Are you sure? All progress will be lost.</p>
+            <button id="confirm-yes">Yes</button>
+            <button id="confirm-no">No</button>
+        </div>
     </div>
     <script src="script.js"> 
         

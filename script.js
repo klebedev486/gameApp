@@ -88,7 +88,7 @@ function dealCards() {
     trumpDiv.appendChild(trumpImg);
     deckContainer.appendChild(trumpDiv);
 
-    const gameArea = document.getElementById("game-area-cards");
+    const gameArea = document.getElementById("game-area-cards");    
     const instructionText = document.createElement("h2");
     instructionText.textContent = "Click/Select Cards and Drag/Drop HERE";
     gameArea.style.border = "2px dashed black";
@@ -130,104 +130,95 @@ const playerTwoElement = document.getElementById('player-2');
 let player1Button;
 let player2Button;
 
-function restartGame() {
-    // Reset game variables
-    gameOn = false;
-    playerOneActive = false;
-    deck = createDeck(); // Reset the deck
-    // Clear the cards from the player areas and game area
-    document.getElementById('player1-cards').innerHTML = '';
-    document.getElementById('player2-cards').innerHTML = '';
-    document.getElementById('game-area-cards').innerHTML = '';
+function restartUi() {
+    if (gameOn) {
+        const modal = document.getElementById("confirmation-modal");
+        modal.style.display = "block"; // Show modal
 
-    // Reset the player elements to their original state
-    playerOneElement.textContent = "Player 1";
-    playerTwoElement.textContent = "Player 2";
+        // Handle the "Yes" button click
+        document.getElementById("confirm-yes").onclick = function () {
+            modal.style.display = "none";
+            location.reload(); // Restart game
+        };
 
-    // Re-enable the start game button
-    startGameButton.disabled = false;
-
-    //reset the deck image
-    document.getElementById('deck').innerHTML = `<img src="./cardImages/card-deck.jpg" alt="Deck" class="deck-image" draggable="false">`;
-
-    //reset the discard pile image.
-    document.getElementById('discard-pile').innerHTML = `<img src="./cardImages/card-pile.jpg" alt="Deck" class="deck-image" id="discard-pile" draggable="false">`;
-
-    //reset the game area text.
-    const gameArea = document.getElementById("game-area-cards");
-    const instructionText = document.createElement("h2");
-    instructionText.textContent = "Click/Select Cards and Drag/Drop HERE";
-    gameArea.appendChild(instructionText);
-
-    console.log("Game restarted.");
+        // Handle the "No" button click
+        document.getElementById("confirm-no").onclick = function () {
+            modal.style.display = "none"; // Close modal
+        };
+    }
 }
 
 startGameButton.addEventListener('click', () => {
-    shuffleDeck();
-    dealCards();
-    console.log('The game has started!');
-    gameOn = true;
-    playerOneActive = true;
-
-    playerOneElement.outerHTML = `<button id="player-1-btn" class="player-button">Player 1 Turn / Press to Finish</button>`;
-    playerTwoElement.outerHTML = `<button id="player-2-btn" class="player-button">Player 2</button>`;
-
-    player1Button = document.getElementById('player-1-btn');
-    player2Button = document.getElementById('player-2-btn');
-
-    const player1Cards = document.getElementById('player1-cards');
-    const player2Cards = document.getElementById('player2-cards');
-
-    function updateTurn() {
-        if (playerOneActive) {
-            player1Button.textContent = "Player 1 Turn / Press to Finish";
-            player1Button.disabled = false;
-            player1Button.style.pointerEvents = 'auto';
-            player2Button.textContent = "Player 2";
-            player2Button.disabled = true;
-            player2Button.style.pointerEvents = 'none';
-            enableDragging(player1Cards);
-            disableDragging(player2Cards);
-        } else {
-            player1Button.textContent = "Player 1";
-            player1Button.disabled = true;
-            player1Button.style.pointerEvents = 'none';
-            player2Button.textContent = "Player 2 Turn / Press to Finish";
-            player2Button.disabled = false;
-            player2Button.style.pointerEvents = 'auto';
-            enableDragging(player2Cards);
-            disableDragging(player1Cards);
-        }
-    }
-
-    function enableDragging(cardsElement) {
-        if (cardsElement) {
-            cardsElement.querySelectorAll('*').forEach(element => {
-                element.draggable = true;
-            });
-        }
-    }
-
-    function disableDragging(cardsElement) {
-        if (cardsElement) {
-            cardsElement.querySelectorAll('*').forEach(element => {
-                element.draggable = false;
-            });
-        }
-    }
-
-    player1Button.addEventListener('click', () => {
-        playerOneActive = false;
-        updateTurn();
-    });
-
-    player2Button.addEventListener('click', () => {
+    if (gameOn) {
+        restartUi(); // Only show confirmation modal if game is already running
+    } else {
+        shuffleDeck();
+        dealCards();
+        console.log('The game has started!');
+        gameOn = true;
         playerOneActive = true;
-        updateTurn();
-    });
 
-    updateTurn();
+        playerOneElement.outerHTML = `<button id="player-1-btn" class="player-button">Player 1 Turn / Press to Finish</button>`;
+        playerTwoElement.outerHTML = `<button id="player-2-btn" class="player-button">Player 2</button>`;
+
+        player1Button = document.getElementById('player-1-btn');
+        player2Button = document.getElementById('player-2-btn');
+
+        const player1Cards = document.getElementById('player1-cards');
+        const player2Cards = document.getElementById('player2-cards');
+
+        function updateTurn() {
+            if (playerOneActive) {
+                player1Button.textContent = "Player 1 Turn / Press to Finish";
+                player1Button.disabled = false;
+                player1Button.style.pointerEvents = 'auto';
+                player2Button.textContent = "Player 2";
+                player2Button.disabled = true;
+                player2Button.style.pointerEvents = 'none';
+                enableDragging(player1Cards);
+                disableDragging(player2Cards);
+            } else {
+                player1Button.textContent = "Player 1";
+                player1Button.disabled = true;
+                player1Button.style.pointerEvents = 'none';
+                player2Button.textContent = "Player 2 Turn / Press to Finish";
+                player2Button.disabled = false;
+                player2Button.style.pointerEvents = 'auto';
+                enableDragging(player2Cards);
+                disableDragging(player1Cards);
+            }
+        }
+
+        function enableDragging(cardsElement) {
+            if (cardsElement) {
+                cardsElement.querySelectorAll('*').forEach(element => {
+                    element.draggable = true;
+                });
+            }
+        }
+
+        function disableDragging(cardsElement) {
+            if (cardsElement) {
+                cardsElement.querySelectorAll('*').forEach(element => {
+                    element.draggable = false;
+                });
+            }
+        }
+
+        player1Button.addEventListener('click', () => {
+            playerOneActive = false;
+            updateTurn();
+        });
+
+        player2Button.addEventListener('click', () => {
+            playerOneActive = true;
+            updateTurn();
+        });
+
+        updateTurn();
+    }
 });
+
 
 
 
