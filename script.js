@@ -130,39 +130,17 @@ const playerTwoElement = document.getElementById('player-2');
 let player1Button;
 let player2Button;
 
-function restartGame() {
-    // Reset game variables
-    gameOn = false;
-    playerOneActive = false;
-    deck = createDeck(); // Reset the deck
-    // Clear the cards from the player areas and game area
-    document.getElementById('player1-cards').innerHTML = '';
-    document.getElementById('player2-cards').innerHTML = '';
-    document.getElementById('game-area-cards').innerHTML = '';
-
-    // Reset the player elements to their original state
-    playerOneElement.textContent = "Player 1";
-    playerTwoElement.textContent = "Player 2";
-
-    // Re-enable the start game button
-    startGameButton.disabled = false;
-
-    //reset the deck image
-    document.getElementById('deck').innerHTML = `<img src="./cardImages/card-deck.jpg" alt="Deck" class="deck-image" draggable="false">`;
-
-    //reset the discard pile image.
-    document.getElementById('discard-pile').innerHTML = `<img src="./cardImages/card-pile.jpg" alt="Deck" class="deck-image" id="discard-pile" draggable="false">`;
-
-    //reset the game area text.
-    const gameArea = document.getElementById("game-area-cards");
-    const instructionText = document.createElement("h2");
-    instructionText.textContent = "Click/Select Cards and Drag/Drop HERE";
-    gameArea.appendChild(instructionText);
-
-    console.log("Game restarted.");
+function restartUi() {
+    if (gameOn) {
+        const confirmation = confirm("Are you sure? All progress will be lost.");
+        if (confirmation) {
+            location.reload(); // Reload the page to reset everything
+        }
+    }
 }
 
 startGameButton.addEventListener('click', () => {
+    restartUi();
     shuffleDeck();
     dealCards();
     console.log('The game has started!');
