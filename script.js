@@ -149,7 +149,7 @@ function drop(event) {
     if (draggedCard && event.target.id === "game-area-cards") {
         const rank = draggedCard.getAttribute("data-rank");
 
-        // ⬇️ NEW LOGIC GOES HERE
+        
         if (document.querySelectorAll("#game-area-cards .card-div").length === 0) {
             currentTurnRank = rank; // First attack can be any rank
         } else if (!isValidAttackRank(rank)) {
@@ -179,16 +179,17 @@ function drop(event) {
 function beatCard(event) {
     event.preventDefault();
 
-    if (playerOneActive) {
-        console.log("Attacker cannot beat their own cards.");
-        return;
-    }
+    // REMOVE this check to allow both players to beat during any turn
+    // if (playerOneActive) {
+    //     console.log("Attacker cannot beat their own cards.");
+    //     return;
+    // }
 
     const defenderCardId = event.dataTransfer.getData("text/plain");
     const defenderCard = document.getElementById(defenderCardId);
     const attackerCard = event.currentTarget;
 
-    // ⛔ Prevent beating the same card more than once
+    // Prevent beating the same card more than once
     if (attackerCard.children.length > 1) {
         console.log("This card has already been defended. Cannot beat it again.");
         return;
@@ -196,7 +197,6 @@ function beatCard(event) {
 
     const defRank = parseInt(defenderCard.getAttribute("data-rank"));
     const defSuit = defenderCard.getAttribute("data-suit");
-
     const attRank = parseInt(attackerCard.getAttribute("data-rank"));
     const attSuit = attackerCard.getAttribute("data-suit");
 
@@ -218,6 +218,61 @@ function beatCard(event) {
         console.log(`${defenderCardId} successfully beat ${attackerCard.id}`);
     } else {
         console.log(`Invalid move. Must beat by higher rank or trump rules.`);
+    }
+}
+
+function discardGameAreaCards() {
+    const gameArea = document.getElementById("game-area-cards");
+
+    // Get all card elements from the game area
+    const cards = Array.from(gameArea.children);
+
+    // Move each card to the discard pile (data and visual)
+    cards.forEach(card => {
+        const rank = card.getAttribute("data-rank");
+        const suit = card.getAttribute("data-suit");
+
+        // Add to discard pile array
+        discardPile.push({ rank, suit });
+
+        // Visually remove the card from the game area
+        gameArea.removeChild(card);
+    });
+
+    // Clear the game area data array
+    gameAreaCards.length = 0;
+
+    // Log the discard action for verification
+    console.log("All cards from game area moved to discard pile.");
+}
+
+function refillPlayerHands() {
+    const maxCards = 6;
+
+    // Get the actual number of cards from the DOM for Player 1
+    const player1CardCount = document.querySelectorAll("#player1-cards .card-div").length;
+    const cardsToAddP1 = maxCards - player1CardCount;
+
+    if (cardsToAddP1 > 0) {
+        for (let i = 0; i < cardsToAddP1 && deck.length > 0; i++) {
+            const newCard = deck.shift();
+            player1Cards.push(newCard);
+            createCardDiv(newCard, "player1-cards");
+            console.log(`Added ${newCard.rank} of ${newCard.suit} to Player 1's hand`);
+        }
+    }
+
+    // Get the actual number of cards from the DOM for Player 2
+    const player2CardCount = document.querySelectorAll("#player2-cards .card-div").length;
+    const cardsToAddP2 = maxCards - player2CardCount;
+
+    if (cardsToAddP2 > 0) {
+        for (let i = 0; i < cardsToAddP2 && deck.length > 0; i++) {
+            const newCard = deck.shift();
+            player2Cards.push(newCard);
+            createCardDiv(newCard, "player2-cards");
+            console.log(`Added ${newCard.rank} of ${newCard.suit} to Player 2's hand`);
+        }
     }
 }
 
@@ -278,10 +333,11 @@ startGameButton.addEventListener('click', () => {
                 player1Button.disabled = false;
                 player1Button.style.pointerEvents = 'auto';
                 player2Button.textContent = "Player 2";
-                player2Button.disabled = true;
-                player2Button.style.pointerEvents = 'none';
+                // REMOVE the following lines to allow Player 2 to interact
+                // player2Button.disabled = true;
+                // player2Button.style.pointerEvents = 'none';
                 enableDragging(player1Cards);
-                disableDragging(player2Cards);
+                enableDragging(player2Cards); // Allow both players to interact
             } else {
                 player1Button.textContent = "Player 1";
                 player1Button.disabled = true;
@@ -289,8 +345,8 @@ startGameButton.addEventListener('click', () => {
                 player2Button.textContent = "Player 2 Turn / Press to Finish";
                 player2Button.disabled = false;
                 player2Button.style.pointerEvents = 'auto';
+                enableDragging(player1Cards); // Allow both players to interact
                 enableDragging(player2Cards);
-                disableDragging(player1Cards);
             }
         }
 
@@ -312,19 +368,25 @@ startGameButton.addEventListener('click', () => {
 
         player1Button.addEventListener('click', () => {
             if (turnPhase === "attack") {
+                // End of turn — discard cards and reset
+                console.log("Player 1 finishes turn, discarding game area cards...");
+                discardGameAreaCards();  // Discard immediately after Player 1 finishes
+                refillPlayerHands();  // Refill hands if needed
                 turnPhase = "defend";
                 playerOneActive = false;
             } else if (turnPhase === "second-attack") {
-                // End of turn — clean up cards or move to discard later
-                console.log("End of turn, discarding or resetting...");
+                // End of turn — discard cards and reset
+                console.log("End of turn, discarding game area cards...");
+                discardGameAreaCards();  // Call the discard function here
+                refillPlayerHands();  // Refill hands if needed
                 turnPhase = "attack";
                 playerOneActive = true;
-                gameAreaCards = []; // optionally clear area or track better
+                gameAreaCards = [];  // Clear the game area card data
                 currentTurnRank = null;
             }
             updateTurn();
         });
-        
+
         player2Button.addEventListener('click', () => {
             if (turnPhase === "defend") {
                 turnPhase = "second-attack";
