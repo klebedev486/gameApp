@@ -111,13 +111,29 @@
             margin-top: 10px;
             margin-bottom: 10px;
         }
-
-        .player-button:hover {
-            background-color: #45a049; 
-            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.3); 
-            transform: translateY(-2px); 
-        }
         
+        .player-static {
+            background-color: #4CAF50;
+            color: black;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            border: none;
+            border-radius: 10px;
+            padding: 14px 28px;
+            font-size: 18px;
+            font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+            margin-top: 10px;
+            margin-bottom: 10px;
+            cursor: default; /* No pointer change */
+            transition: none; /* Remove any transition effects */
+        }
+
+        .player-static:hover {
+            background-color: #4CAF50; /* No change on hover */
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); /* Same shadow as normal */
+            transform: none; /* No popping up */
+        }
+
         .card-div {
             position: relative;
         }
@@ -141,6 +157,7 @@
     </div>
     <div class="player-1">
         <h2 class="player-number" id="player-1">Player 1</h2>
+        <div id="finish-round-container"></div>
     </div>
     <div class="game-div">
         <div id="deck-area-left">

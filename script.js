@@ -318,8 +318,9 @@ startGameButton.addEventListener('click', () => {
         gameOn = true;
         playerOneActive = true;
 
-        playerOneElement.outerHTML = `<button id="player-1-btn" class="player-button">Player 1 Turn / Press to Finish</button>`;
-        playerTwoElement.outerHTML = `<button id="player-2-btn" class="player-button">Player 2</button>`;
+        // Update player elements to buttons after the game starts
+        playerOneElement.outerHTML = `<div id="player-1-btn" class="player-static">Player 1 Turn / Press to Finish</div>`;
+        playerTwoElement.outerHTML = `<div id="player-2-btn" class="player-static">Player 2</div>`;
 
         player1Button = document.getElementById('player-1-btn');
         player2Button = document.getElementById('player-2-btn');
@@ -327,29 +328,18 @@ startGameButton.addEventListener('click', () => {
         const player1Cards = document.getElementById('player1-cards');
         const player2Cards = document.getElementById('player2-cards');
 
+        // Update turn indicator function
         function updateTurn() {
             if (playerOneActive) {
-                player1Button.textContent = "Player 1 Turn / Press to Finish";
-                player1Button.disabled = false;
-                player1Button.style.pointerEvents = 'auto';
-                player2Button.textContent = "Player 2";
-                // REMOVE the following lines to allow Player 2 to interact
-                // player2Button.disabled = true;
-                // player2Button.style.pointerEvents = 'none';
-                enableDragging(player1Cards);
-                enableDragging(player2Cards); // Allow both players to interact
+                player1Button.textContent = "Player 1 (Attacker)";
+                player2Button.textContent = "Player 2 (Defender)";
             } else {
-                player1Button.textContent = "Player 1";
-                player1Button.disabled = true;
-                player1Button.style.pointerEvents = 'none';
-                player2Button.textContent = "Player 2 Turn / Press to Finish";
-                player2Button.disabled = false;
-                player2Button.style.pointerEvents = 'auto';
-                enableDragging(player1Cards); // Allow both players to interact
-                enableDragging(player2Cards);
+                player1Button.textContent = "Player 1 (Defender)";
+                player2Button.textContent = "Player 2 (Attacker)";
             }
         }
 
+        // Enable dragging for player cards
         function enableDragging(cardsElement) {
             if (cardsElement) {
                 cardsElement.querySelectorAll('*').forEach(element => {
@@ -358,50 +348,40 @@ startGameButton.addEventListener('click', () => {
             }
         }
 
-        function disableDragging(cardsElement) {
-            if (cardsElement) {
-                cardsElement.querySelectorAll('*').forEach(element => {
-                    element.draggable = false;
-                });
-            }
+        enableDragging(player1Cards);
+        enableDragging(player2Cards);
+
+        // Dynamically create the Finish Round button after game starts
+        const finishRoundContainer = document.getElementById('finish-round-container');
+        if (!document.getElementById('finish-round')) {
+            const finishRoundButton = document.createElement('button');
+            finishRoundButton.className = 'player-button';
+            finishRoundButton.id = 'finish-round';
+            finishRoundButton.textContent = 'Press to Finish Round';
+            finishRoundContainer.appendChild(finishRoundButton);
+
+            finishRoundButton.addEventListener('click', () => {
+                console.log("Finishing the round, discarding game area cards...");
+                discardGameAreaCards();  // Discard the cards in the game area
+                refillPlayerHands();      // Refill both players' hands
+                playerOneActive = !playerOneActive;  // Switch active player
+                updateTurn();             // Update the turn indicators
+            });
         }
-
-        player1Button.addEventListener('click', () => {
-            if (turnPhase === "attack") {
-                // End of turn — discard cards and reset
-                console.log("Player 1 finishes turn, discarding game area cards...");
-                discardGameAreaCards();  // Discard immediately after Player 1 finishes
-                refillPlayerHands();  // Refill hands if needed
-                turnPhase = "defend";
-                playerOneActive = false;
-            } else if (turnPhase === "second-attack") {
-                // End of turn — discard cards and reset
-                console.log("End of turn, discarding game area cards...");
-                discardGameAreaCards();  // Call the discard function here
-                refillPlayerHands();  // Refill hands if needed
-                turnPhase = "attack";
-                playerOneActive = true;
-                gameAreaCards = [];  // Clear the game area card data
-                currentTurnRank = null;
-            }
-            updateTurn();
-        });
-
-        player2Button.addEventListener('click', () => {
-            if (turnPhase === "defend") {
-                turnPhase = "second-attack";
-                playerOneActive = true;
-                // Don't reset currentTurnRank! It must persist for second-attack phase
-            }
-            updateTurn();
-        });
-        
-        
 
         updateTurn();
     }
 });
 
+
+const finishRoundButton = document.getElementById('finish-round');
+finishRoundButton.addEventListener('click', () => {
+    console.log("Finishing the round, discarding game area cards...");
+    discardGameAreaCards();  // Discard the cards in the game area
+    refillPlayerHands();      // Refill both players' hands
+    playerOneActive = !playerOneActive;  // Switch active player
+    updateTurn();             // Update the turn indicators
+});
 
 
 // On Resize
