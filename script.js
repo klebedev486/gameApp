@@ -137,8 +137,9 @@ function isValidAttackRank(rank) {
 
 function drop(event) {
     event.preventDefault();
-    
-    if (!playerOneActive || (turnPhase !== "attack" && turnPhase !== "second-attack")) {
+
+    // Check if it's the attack phase
+    if (turnPhase !== "attack") {
         console.log("Cannot drop card at this phase.");
         return;
     }
@@ -146,24 +147,28 @@ function drop(event) {
     const cardId = event.dataTransfer.getData("text/plain");
     const draggedCard = document.getElementById(cardId);
 
+    // Check if the card is being dropped in the game area
     if (draggedCard && event.target.id === "game-area-cards") {
         const rank = draggedCard.getAttribute("data-rank");
 
-        
-        if (document.querySelectorAll("#game-area-cards .card-div").length === 0) {
+        // Check if it's the first attack or a valid follow-up attack
+        if (gameAreaCards.length === 0) {
             currentTurnRank = rank; // First attack can be any rank
         } else if (!isValidAttackRank(rank)) {
             console.log("Invalid card rank for attack. Must match rank already on the table.");
             return;
         }
 
+        // Remove any instructional text if present
         const instruction = document.querySelector("#game-area-cards h2");
         if (instruction) {
             instruction.remove();
         }
 
+        // Append the dragged card to the game area
         event.target.appendChild(draggedCard);
 
+        // Make the card droppable for defense
         draggedCard.addEventListener("dragover", allowDrop);
         draggedCard.addEventListener("drop", beatCard);
 
@@ -173,6 +178,7 @@ function drop(event) {
         console.log(`Card moved to game area: ${cardId}`);
     }
 }
+
 
 
 
@@ -224,27 +230,56 @@ function beatCard(event) {
 function discardGameAreaCards() {
     const gameArea = document.getElementById("game-area-cards");
 
-    // Get all card elements from the game area
+    // Get all top-level card elements from the game area
     const cards = Array.from(gameArea.children);
 
-    // Move each card to the discard pile (data and visual)
+    // Helper function to collect nested cards
+    function collectCards(card) {
+        const collectedCards = [];
+        collectedCards.push(card);
+
+        // Check if there are nested cards (defended card)
+        if (card.children.length > 0) {
+            Array.from(card.children).forEach(child => {
+                if (child.classList.contains("card-div")) {
+                    collectedCards.push(...collectCards(child)); // Recursively collect nested cards
+                }
+            });
+        }
+        return collectedCards;
+    }
+
+    // Move each top-level card to the discard pile
     cards.forEach(card => {
-        const rank = card.getAttribute("data-rank");
-        const suit = card.getAttribute("data-suit");
+        const allCards = collectCards(card); // Get all nested cards
 
-        // Add to discard pile array
-        discardPile.push({ rank, suit });
+        allCards.forEach(nestedCard => {
+            const rank = nestedCard.getAttribute("data-rank");
+            const suit = nestedCard.getAttribute("data-suit");
 
-        // Visually remove the card from the game area
-        gameArea.removeChild(card);
+            // Log the card being discarded
+            console.log(`Discarding card: ${rank} of ${suit}`);
+
+            // Add to discard pile array
+            discardPile.push({ rank, suit });
+
+            // Only remove the top-level card from the game area
+            if (gameArea.contains(card)) {
+                gameArea.removeChild(card);  // Only remove the parent card, not nested ones
+            }
+        });
     });
 
     // Clear the game area data array
     gameAreaCards.length = 0;
 
-    // Log the discard action for verification
-    console.log("All cards from game area moved to discard pile.");
+    // Log the updated discard pile count
+    console.log("Discard Pile Count After Discarding: ", discardPile.length);
 }
+
+
+
+
 
 function refillPlayerHands() {
     const maxCards = 6;
