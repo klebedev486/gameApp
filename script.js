@@ -28,9 +28,19 @@ let player1Cards = [];
 let player2Cards = [];
 let gameAreaCards = [];
 let discardPile = [];
-
 let currentTurnRank = null;
 let trumpSuit = null;
+
+function collectCards(card) {
+    const collectedCards = [card];
+    Array.from(card.children).forEach(child => {
+        if (child.classList.contains("card-div")) {
+            collectedCards.push(...collectCards(child));
+        }
+    });
+    return collectedCards;
+}
+
 
 function adjustCardSpacing(container) {
     if (!container || !container.children || container.children.length === 0) return;
@@ -134,7 +144,6 @@ function isValidAttackRank(rank) {
 }
 
 
-
 function drop(event) {
     event.preventDefault();
 
@@ -229,54 +238,39 @@ function beatCard(event) {
 
 function discardGameAreaCards() {
     const gameArea = document.getElementById("game-area-cards");
-
-    // Get all top-level card elements from the game area
     const cards = Array.from(gameArea.children);
-
-    // Helper function to collect nested cards
-    function collectCards(card) {
-        const collectedCards = [];
-        collectedCards.push(card);
-
-        // Check if there are nested cards (defended card)
-        if (card.children.length > 0) {
-            Array.from(card.children).forEach(child => {
-                if (child.classList.contains("card-div")) {
-                    collectedCards.push(...collectCards(child)); // Recursively collect nested cards
-                }
-            });
-        }
-        return collectedCards;
-    }
 
     // Move each top-level card to the discard pile
     cards.forEach(card => {
-        const allCards = collectCards(card); // Get all nested cards
+        const allCards = collectCards(card);  // Collect all nested cards
 
         allCards.forEach(nestedCard => {
             const rank = nestedCard.getAttribute("data-rank");
             const suit = nestedCard.getAttribute("data-suit");
 
-            // Log the card being discarded
-            console.log(`Discarding card: ${rank} of ${suit}`);
+            if (rank && suit) {
+                console.log(`Discarding card: ${rank} of ${suit}`);
+                discardPile.push({ rank, suit });
+            }
 
-            // Add to discard pile array
-            discardPile.push({ rank, suit });
-
-            // Only remove the top-level card from the game area
-            if (gameArea.contains(card)) {
-                gameArea.removeChild(card);  // Only remove the parent card, not nested ones
+            // Safely remove the card from the game area
+            try {
+                if (gameArea.contains(nestedCard)) {
+                    gameArea.removeChild(nestedCard);
+                    console.log(`Removed ${rank} of ${suit} from game area`);
+                }
+            } catch (error) {
+                console.error("Error while removing card from game area during discard:", error);
             }
         });
     });
 
-    // Clear the game area data array
+    // Clear the game area data array after moving all cards
     gameAreaCards.length = 0;
 
     // Log the updated discard pile count
     console.log("Discard Pile Count After Discarding: ", discardPile.length);
 }
-
 
 
 
@@ -386,37 +380,101 @@ startGameButton.addEventListener('click', () => {
         enableDragging(player1Cards);
         enableDragging(player2Cards);
 
-        // Dynamically create the Finish Round button after game starts
         const finishRoundContainer = document.getElementById('finish-round-container');
-        if (!document.getElementById('finish-round')) {
-            const finishRoundButton = document.createElement('button');
-            finishRoundButton.className = 'player-button';
-            finishRoundButton.id = 'finish-round';
-            finishRoundButton.textContent = 'Press to Finish Round';
-            finishRoundContainer.appendChild(finishRoundButton);
+        // Clear any existing button first (to avoid duplicates)
+        finishRoundContainer.innerHTML = '';
 
-            finishRoundButton.addEventListener('click', () => {
-                console.log("Finishing the round, discarding game area cards...");
-                discardGameAreaCards();  // Discard the cards in the game area
-                refillPlayerHands();      // Refill both players' hands
-                playerOneActive = !playerOneActive;  // Switch active player
-                updateTurn();             // Update the turn indicators
-            });
+        const finishRoundButton = document.createElement('button');
+        finishRoundButton.className = 'player-button';
+        finishRoundButton.id = 'finish-round';
+        finishRoundButton.textContent = 'Press to Finish Round';
+        finishRoundContainer.appendChild(finishRoundButton);
+
+        // Use the unified finishRound function
+        finishRoundButton.addEventListener('click', () => {
+            finishRound(); // This now calls the complete function we created
+        });
+
+            updateTurn();
         }
+});
 
-        updateTurn();
+
+function finishRound() {
+    const gameArea = document.getElementById("game-area-cards");
+    const cards = Array.from(gameArea.children);
+    let unbeatenCards = [];
+
+    // Identify unbeaten cards (those without a nested defender)
+    cards.forEach(card => {
+        const nestedCards = Array.from(card.children).filter(child => child.classList.contains("card-div"));
+        if (nestedCards.length === 0) {
+            unbeatenCards.push(card);
+        }
+    });
+
+    if (unbeatenCards.length > 0) {
+        console.log("Unbeaten cards found. Defender must take them.");
+        // Defender is the NON-active player (if playerOne is attacking, playerTwo is defending)
+        const defenderContainerId = playerOneActive ? "player2-cards" : "player1-cards";
+        const defenderContainer = document.getElementById(defenderContainerId);
+
+        // Move all unbeaten cards to defender's hand
+        unbeatenCards.forEach(card => {
+            // Get card data from DOM element
+            const rank = card.getAttribute("data-rank");
+            const suit = card.getAttribute("data-suit");
+            const image = card.querySelector("img").src;
+            const cardId = card.id;
+            
+            // Create new card object
+            const cardData = { rank, suit, image, id: cardId };
+            
+            // Add to appropriate player's cards array
+            if (defenderContainerId === "player1-cards") {
+                player1Cards.push(cardData);
+            } else {
+                player2Cards.push(cardData);
+            }
+            
+            // Create the card in defender's hand
+            createCardDiv(cardData, defenderContainerId);
+            
+            // Remove from game area
+            if (gameArea.contains(card)) {
+                gameArea.removeChild(card);
+            }
+            
+            // Remove from gameAreaCards array
+            gameAreaCards = gameAreaCards.filter(c => c.id !== cardId);
+            
+            console.log(`Defender takes: ${rank} of ${suit}`);
+        });
     }
-});
 
+    // Always process beaten pairs (cards with nested defenders)
+    const beatenCards = Array.from(gameArea.children).filter(card => 
+        Array.from(card.children).some(child => child.classList.contains("card-div"))
+    );
+    
+    if (beatenCards.length > 0) {
+        console.log("Processing beaten cards...");
+        discardGameAreaCards();
+    } else if (unbeatenCards.length === 0) {
+        console.log("No cards to process in game area");
+    }
+    
+    // Refill hands
+    refillPlayerHands();
+    
+    // Switch active player
+    playerOneActive = !playerOneActive;
+    updateTurn();
+    
+    // Clear current turn rank
+    currentTurnRank = null;
+}
 
-const finishRoundButton = document.getElementById('finish-round');
-finishRoundButton.addEventListener('click', () => {
-    console.log("Finishing the round, discarding game area cards...");
-    discardGameAreaCards();  // Discard the cards in the game area
-    refillPlayerHands();      // Refill both players' hands
-    playerOneActive = !playerOneActive;  // Switch active player
-    updateTurn();             // Update the turn indicators
-});
 
 
 // On Resize
