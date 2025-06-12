@@ -31,6 +31,9 @@ let discardPile = [];
 let currentTurnRank = null;
 let trumpSuit = null;
 let trumpCardData = null;
+/* ---------- mobile-drag helpers ---------- */
+let dragGhost = null;          // the floating image
+let pointerCard = null;        // the original card being dragged
 
 function updateTurn() {
     const p1Label = document.getElementById('player-1-btn') || document.getElementById('player-1');
@@ -141,6 +144,9 @@ function createCardDiv(card, containerId) {
     cardDiv.setAttribute('data-suit', card.suit);
     cardDiv.addEventListener('dragstart', dragStart);
 
+    /* NEW: touch / pen / universal pointer support */
+    cardDiv.addEventListener('pointerdown', pointerDown);
+
     const cardImg = document.createElement("img");
     cardImg.src = card.image;
     cardImg.alt = `${card.rank} of ${card.suit}`;
@@ -219,6 +225,72 @@ function allowDrop(event) {
     event.preventDefault();
     console.log("allowDrop triggered");
 }
+
+/* ========= GHOST SETUP ========= */
+function createDragGhost(card) {
+    dragGhost = card.cloneNode(true);
+    dragGhost.style.position = 'fixed';
+    dragGhost.style.pointerEvents = 'none';
+    dragGhost.style.opacity = '0.8';
+    dragGhost.style.zIndex = '9999';
+    document.body.appendChild(dragGhost);
+}
+function moveDragGhost(x, y) {
+    if (dragGhost) {
+        dragGhost.style.left = x - 50 + 'px';   // centers 100×150 card
+        dragGhost.style.top  = y - 75 + 'px';
+    }
+}
+function removeDragGhost() {
+    if (dragGhost) {
+        dragGhost.remove();
+        dragGhost = null;
+    }
+}
+
+/* ========= POINTER EVENTS (touch + pen + mouse) ========= */
+function pointerDown(e) {
+    if (e.pointerType === 'mouse') return;   // desktop will use native drag
+    pointerCard = e.currentTarget;
+    pointerCard.setPointerCapture(e.pointerId);
+
+    createDragGhost(pointerCard);
+    moveDragGhost(e.clientX, e.clientY);
+
+    pointerCard.addEventListener('pointermove', pointerMove);
+    pointerCard.addEventListener('pointerup',   pointerUp);
+}
+function pointerMove(e) {
+    moveDragGhost(e.clientX, e.clientY);
+}
+function pointerUp(e) {
+    moveDragGhost(e.clientX, e.clientY);   // final align
+    removeDragGhost();
+
+    const targetEl = document.elementFromPoint(e.clientX, e.clientY);
+    if (targetEl) {
+        /* ---- emulate existing drop logic ---- */
+        if (targetEl.id === 'game-area-cards') {
+            drop({
+                preventDefault(){},
+                dataTransfer:{ getData: () => pointerCard.id },
+                target: targetEl
+            });
+        } else if (targetEl.classList.contains('card-div')) {
+            beatCard({
+                preventDefault(){},
+                dataTransfer:{ getData: () => pointerCard.id },
+                currentTarget: targetEl
+            });
+        }
+    }
+
+    pointerCard.releasePointerCapture(e.pointerId);
+    pointerCard.removeEventListener('pointermove', pointerMove);
+    pointerCard.removeEventListener('pointerup',   pointerUp);
+    pointerCard = null;
+}
+
 
 function isValidAttackRank(rank) {
     const allRanks = [...document.querySelectorAll("#game-area-cards .card-div")]
