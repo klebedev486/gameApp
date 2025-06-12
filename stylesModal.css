@@ -37,3 +37,14 @@
  background-color: #5bc0de;
  color: white;
 }
+
+.invisible {
+    visibility: hidden;
+}
+
+.modal-content p {
+    font-weight: bold;
+}
+
+#gameover-yes { background-color: #d9534f; color: white; }
+#gameover-no  { background-color: #5bc0de; color: white; }

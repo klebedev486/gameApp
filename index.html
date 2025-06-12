@@ -62,12 +62,7 @@
             box-shadow: 0 3px 5px rgba(0, 0, 0, 0.2); 
         }
 
-        .game-div {
-            display: flex;
-            justify-content: space-around; 
-            width: 100%; 
-            align-items: center; 
-        }
+
 
         .deck-image {
             width: 230px; 
@@ -85,15 +80,38 @@
             overflow: hidden;
         }
 
-        #game-area-cards {
-            min-height: 200px; 
-            
+
+        .game-div {
+            display: flex;
+            align-items: flex-start;
+            width: 100%;
         }
 
+        .cards-area {
+            flex: 1 1 auto;
+            max-width: calc(100vw - 520px);   /* 2 × 260-px stacks */
+            overflow: visible;                /* allow rare mega-hands to spill */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* ---------- side stacks stay fixed ---------- */
+        #deck-area-left,
+        #discard-area-right {
+            flex: 0 0 260px;
+            position: relative;
+            z-index: 1;                       /* stay clickable */
+        }
+
+        /* ---------- each hand row ---------- */
         .cards-layout {
             display: flex;
-            justify-content: center;
-            
+            flex-wrap: nowrap;                /* never wrap to a new line     */
+            justify-content: center;          /* row is always centred        */
+            align-items: center;
+            white-space: nowrap;
+            z-index: 2;                       /* render above the stacks      */
         }
 
         .player-button {
@@ -145,6 +163,11 @@
             z-index: 10;
         }
 
+        #game-area-cards {
+            width: 100%;           /* stretch across the middle column   */
+            min-height: 200px;     /* same height you had originally      */
+            box-sizing: border-box;
+        }
     </style>
 </head>
 <body>
@@ -162,7 +185,7 @@
     <div class="game-div">
         <div id="deck-area-left">
             <div id="deck" style="position: relative">
-                <img src="./cardImages/card-deck.jpg" alt="Deck" class="deck-image" draggable="false">
+                <img src="./cardImages/card-deck.jpg" alt="Deck" class="deck-image" id="deck-back-image" draggable="false">
             </div>
         </div>
         <div class="cards-area">
@@ -190,6 +213,14 @@
             <p>Are you sure? All progress will be lost.</p>
             <button id="confirm-yes">Yes</button>
             <button id="confirm-no">No</button>
+        </div>
+    </div>
+    <!-- GAME-OVER MODAL -->
+    <div id="gameover-modal" class="modal">
+        <div class="modal-content">
+            <p id="gameover-text">Player 1 wins!</p>
+            <button id="gameover-yes">Yes</button>
+            <button id="gameover-no">No</button>
         </div>
     </div>
     <script src="script.js"> 

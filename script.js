@@ -30,6 +30,28 @@ let gameAreaCards = [];
 let discardPile = [];
 let currentTurnRank = null;
 let trumpSuit = null;
+let trumpCardData = null;
+
+function updateTurn() {
+    const p1Label = document.getElementById('player-1-btn') || document.getElementById('player-1');
+    const p2Label = document.getElementById('player-2-btn') || document.getElementById('player-2');
+
+        if (playerOneActive) {           // Player 1 is attacking
+            p1Label.textContent = 'Player 1 Turn';
+            p2Label.textContent = 'Player 2';
+        } else {                         // Player 2 is attacking
+            p1Label.textContent = 'Player 1';
+            p2Label.textContent = 'Player 2 Turn';
+        }
+} 
+
+/* ------------  PLAYER-OF-CARD HELPERS  ------------ */
+function isCardFromPlayer1(cardEl) {
+    return cardEl.closest('#player1-cards') !== null;
+}
+function isCardFromPlayer2(cardEl) {
+    return cardEl.closest('#player2-cards') !== null;
+}
 
 function collectCards(card) {
     const collectedCards = [card];
@@ -41,21 +63,73 @@ function collectCards(card) {
     return collectedCards;
 }
 
-
-function adjustCardSpacing(container) {
-    if (!container || !container.children || container.children.length === 0) return;
-
-    const cards = container.children;
-    const containerWidth = container.clientWidth;
-    const cardWidth = cards[0].offsetWidth;
-    const totalCards = cards.length;
-
-    const spacing = totalCards > 1 ? (containerWidth - totalCards * cardWidth) / (totalCards - 1) : 0;
-
-    for (let i = 0; i < totalCards; i++) {
-        cards[i].style.marginRight = i < totalCards - 1 ? `${Math.max(-50, spacing)}px` : 0;
+function hideDeckBack() {
+    const back = document.getElementById("deck-back-image");
+    if (back && !back.classList.contains("invisible")) {
+        back.classList.add("invisible");   // layout stays intact
     }
 }
+
+function adjustCardSpacing(container) {
+    if (!container || !container.children.length) return;
+
+    const cardW  = container.children[0].offsetWidth;            // 100px
+    const count  = container.children.length;
+    const midW   = container.parentElement.clientWidth;          // .cards-area
+    const maxGap = 15;
+
+    const natural = cardW * count;                               // no gaps
+    let gap;
+
+    /* Fit comfortably with 15-px gaps */
+    if (natural + maxGap * (count - 1) <= midW) {
+        gap = maxGap;
+    }
+    /* Fit only with a smaller positive gap */
+    else if (natural <= midW) {
+        gap = (midW - natural) / (count - 1);
+    }
+    /* Won’t fit — switch to fixed overlap */
+    else {
+        gap = -40;
+    }
+
+    Array.from(container.children).forEach((c, i) => {
+        c.style.marginRight = i === count - 1 ? '0px' : gap + 'px';
+    });
+}
+
+function checkGameEnd() {
+    const p1Count = document.querySelectorAll('#player1-cards .card-div').length;
+    const p2Count = document.querySelectorAll('#player2-cards .card-div').length;
+    const deckEmpty = deck.length === 0 && !trumpCardData;   // no face-down cards, no trump left
+
+    if (!deckEmpty) return;                                  // can’t finish while pile exists
+
+    let resultText = '';
+    if (p1Count === 0 && p2Count === 0) {
+        resultText = "It's a draw!";
+    } else if (p1Count === 0) {
+        resultText = "Player 1 wins!";
+    } else if (p2Count === 0) {
+        resultText = "Player 2 wins!";
+    } else {
+        return; // no one is empty yet
+    }
+
+    // Show the modal
+    const modal = document.getElementById('gameover-modal');
+    document.getElementById('gameover-text').textContent = resultText + '  Start a new game?';
+    modal.style.display = 'block';
+}
+
+/* ----------  Game-over modal buttons  ---------- */
+document.getElementById('gameover-yes').onclick = function () {
+    location.reload();                         // quick way to reset everything
+};
+document.getElementById('gameover-no').onclick = function () {
+    document.getElementById('gameover-modal').style.display = 'none';
+};
 
 function createCardDiv(card, containerId) {
     const container = document.getElementById(containerId);
@@ -87,45 +161,54 @@ function createCardDiv(card, containerId) {
 }
 
 function dealCards() {
-    let player1 = deck.splice(0, 6);
-    let player2 = deck.splice(0, 6);
-    let trumpCard = deck.shift();
+    /* --------  Deal 6 cards each from the top of the deck  -------- */
+    const player1 = deck.splice(0, 6);     // first 6 → Player 1
+    const player2 = deck.splice(0, 6);     // next 6 → Player 2
 
+    /* --------  Take the next card as the face-up trump  -------- */
+    const trumpCard = deck.shift();        // remove from deck
+    trumpCardData   = trumpCard;           // **save** for late draw
+    trumpSuit       = trumpCard.suit;      // global suit for rules
+
+    /* --------  Render both players’ hands  -------- */
     player1.forEach(card => createCardDiv(card, "player1-cards"));
     player2.forEach(card => createCardDiv(card, "player2-cards"));
 
+    /* --------  Render the face-up trump image  -------- */
     const deckContainer = document.getElementById("deck");
-    const trumpDiv = document.createElement("div");
-    const trumpImg = document.createElement("img");
 
-    trumpImg.src = trumpCard.image;
-    trumpImg.alt = `${trumpCard.rank} of ${trumpCard.suit}`;
-    trumpImg.style.width = "90px";
-    trumpImg.style.height = "140px";
-    trumpImg.style.border = "2px solid gold";
-    trumpImg.style.borderRadius = "5px";
-
+    const trumpDiv       = document.createElement("div");
+    trumpDiv.id          = "trump-card-container";   // so we can remove it later
     trumpDiv.style.position = "absolute";
-    trumpDiv.style.top = "60%";
-    trumpDiv.style.left = "60%";
+    trumpDiv.style.top      = "60%";
+    trumpDiv.style.left     = "60%";
+    trumpDiv.style.pointerEvents = "none";           // prevent dragging
 
+    const trumpImg = document.createElement("img");
+    trumpImg.src   = trumpCard.image;
+    trumpImg.alt   = `${trumpCard.rank} of ${trumpCard.suit}`;
+    trumpImg.style.width        = "90px";
+    trumpImg.style.height       = "140px";
+    trumpImg.style.border       = "2px solid gold";
+    trumpImg.style.borderRadius = "5px";
     trumpImg.draggable = false;
 
     trumpDiv.appendChild(trumpImg);
     deckContainer.appendChild(trumpDiv);
-    trumpSuit = trumpCard.suit;
+
     console.log("Trump suit is:", trumpSuit);
 
-    const gameArea = document.getElementById("game-area-cards");    
-    const instructionText = document.createElement("h2");
-    instructionText.textContent = "Click/Select Cards and Drag/Drop HERE";
-    gameArea.style.border = "2px dashed black";
-    gameArea.style.justifyContent = "center";
-    gameArea.style.alignItems = "center";
-    instructionText.style.color = "rgba(0, 0, 0, 0.5)";
-    instructionText.style.pointerEvents = "none";
+    /* --------  Placeholder text in the game area  -------- */
+    const gameArea       = document.getElementById("game-area-cards");
+    const instructionTxt = document.createElement("h2");
+    instructionTxt.textContent      = "Click/Select Cards and Drag/Drop HERE";
+    instructionTxt.style.color      = "rgba(0,0,0,0.5)";
+    instructionTxt.style.pointerEvents = "none";
 
-    gameArea.appendChild(instructionText);
+    // gameArea.style.border        = "2px dashed black";
+    gameArea.style.justifyContent = "center";
+    gameArea.style.alignItems    = "center";
+    gameArea.appendChild(instructionTxt);
 }
 
 function dragStart(event) {
@@ -147,7 +230,7 @@ function isValidAttackRank(rank) {
 function drop(event) {
     event.preventDefault();
 
-    // Check if it's the attack phase
+    /* ----------  TURN-PHASE CHECK  ---------- */
     if (turnPhase !== "attack") {
         console.log("Cannot drop card at this phase.");
         return;
@@ -156,28 +239,38 @@ function drop(event) {
     const cardId = event.dataTransfer.getData("text/plain");
     const draggedCard = document.getElementById(cardId);
 
-    // Check if the card is being dropped in the game area
+    /* ----------  NEW ATTACKER-ONLY LOCK  ---------- */
+    // If it's Player 1's turn, the card must come from Player 1's hand.
+    if (playerOneActive && !isCardFromPlayer1(draggedCard)) {
+        console.log("Only Player 1 may attack this turn.");
+        return;
+    }
+    // If it's Player 2's turn, the card must come from Player 2's hand.
+    if (!playerOneActive && !isCardFromPlayer2(draggedCard)) {
+        console.log("Only Player 2 may attack this turn.");
+        return;
+    }
+
+    /* ----------  EXISTING RANK / TABLE LOGIC  ---------- */
     if (draggedCard && event.target.id === "game-area-cards") {
         const rank = draggedCard.getAttribute("data-rank");
 
-        // Check if it's the first attack or a valid follow-up attack
+        // First attack of the round can be any rank; follow-ups must match a rank already on the table
         if (gameAreaCards.length === 0) {
-            currentTurnRank = rank; // First attack can be any rank
+            currentTurnRank = rank;
         } else if (!isValidAttackRank(rank)) {
             console.log("Invalid card rank for attack. Must match rank already on the table.");
             return;
         }
 
-        // Remove any instructional text if present
+        // Remove placeholder text after first card
         const instruction = document.querySelector("#game-area-cards h2");
-        if (instruction) {
-            instruction.remove();
-        }
+        if (instruction) instruction.remove();
 
-        // Append the dragged card to the game area
+        // Move the card into the table
         event.target.appendChild(draggedCard);
 
-        // Make the card droppable for defense
+        // Make it a drop target for the defender
         draggedCard.addEventListener("dragover", allowDrop);
         draggedCard.addEventListener("drop", beatCard);
 
@@ -189,27 +282,33 @@ function drop(event) {
 }
 
 
-
-
 function beatCard(event) {
     event.preventDefault();
 
-    // REMOVE this check to allow both players to beat during any turn
-    // if (playerOneActive) {
-    //     console.log("Attacker cannot beat their own cards.");
-    //     return;
-    // }
+    /* ----------  GRAB ELEMENTS  ---------- */
+    const defenderCardId = event.dataTransfer.getData("text/plain"); // the card being dragged
+    const defenderCard   = document.getElementById(defenderCardId);
+    const attackerCard   = event.currentTarget;                      // the card already on table
 
-    const defenderCardId = event.dataTransfer.getData("text/plain");
-    const defenderCard = document.getElementById(defenderCardId);
-    const attackerCard = event.currentTarget;
+    /* ----------  DEFENDER-ONLY GUARD  ---------- */
+    // If Player 1 is currently attacking, only Player 2’s cards may beat.
+    if (playerOneActive && isCardFromPlayer1(defenderCard)) {
+        console.log("Attacker cannot beat their own cards.");
+        return;
+    }
+    // If Player 2 is currently attacking, only Player 1’s cards may beat.
+    if (!playerOneActive && isCardFromPlayer2(defenderCard)) {
+        console.log("Attacker cannot beat their own cards.");
+        return;
+    }
 
-    // Prevent beating the same card more than once
+    /* ----------  PREVENT DOUBLE-BEATING  ---------- */
     if (attackerCard.children.length > 1) {
         console.log("This card has already been defended. Cannot beat it again.");
         return;
     }
 
+    /* ----------  RANK / TRUMP VALIDATION  ---------- */
     const defRank = parseInt(defenderCard.getAttribute("data-rank"));
     const defSuit = defenderCard.getAttribute("data-suit");
     const attRank = parseInt(attackerCard.getAttribute("data-rank"));
@@ -218,21 +317,22 @@ function beatCard(event) {
     let validDefense = false;
 
     if (defSuit === attSuit && defRank > attRank) {
-        validDefense = true;
+        validDefense = true;                                   // higher same-suit card
     } else if (defSuit === trumpSuit && attSuit !== trumpSuit) {
-        validDefense = true;
+        validDefense = true;                                   // any trump beats non-trump
     } else if (defSuit === trumpSuit && attSuit === trumpSuit && defRank > attRank) {
-        validDefense = true;
+        validDefense = true;                                   // higher trump beats lower trump
     }
 
+    /* ----------  APPLY DEFENSE IF VALID  ---------- */
     if (validDefense) {
         attackerCard.appendChild(defenderCard);
         defenderCard.style.position = "absolute";
-        defenderCard.style.top = "20px";
+        defenderCard.style.top  = "20px";
         defenderCard.style.left = "20px";
         console.log(`${defenderCardId} successfully beat ${attackerCard.id}`);
     } else {
-        console.log(`Invalid move. Must beat by higher rank or trump rules.`);
+        console.log("Invalid move. Must beat by higher rank or trump rules.");
     }
 }
 
@@ -273,39 +373,51 @@ function discardGameAreaCards() {
 }
 
 
-
-
 function refillPlayerHands() {
-    const maxCards = 6;
+    var MAX_HAND = 6;
 
-    // Get the actual number of cards from the DOM for Player 1
-    const player1CardCount = document.querySelectorAll("#player1-cards .card-div").length;
-    const cardsToAddP1 = maxCards - player1CardCount;
+    /* -------- Decide draw order (next attacker first) -------- */
+    var sequence = playerOneActive
+        ? [                                     // Player 1 attacks next
+            { id: 'player1-cards', arr: player1Cards },
+            { id: 'player2-cards', arr: player2Cards }
+          ]
+        : [                                     // Player 2 attacks next
+            { id: 'player2-cards', arr: player2Cards },
+            { id: 'player1-cards', arr: player1Cards }
+          ];
 
-    if (cardsToAddP1 > 0) {
-        for (let i = 0; i < cardsToAddP1 && deck.length > 0; i++) {
-            const newCard = deck.shift();
-            player1Cards.push(newCard);
-            createCardDiv(newCard, "player1-cards");
-            console.log(`Added ${newCard.rank} of ${newCard.suit} to Player 1's hand`);
+    /* -------- Deal cards in that order -------- */
+    sequence.forEach(function (player) {
+        var currentCount = document.querySelectorAll(
+            '#' + player.id + ' .card-div'
+        ).length;
+        var need = MAX_HAND - currentCount;
+
+        while (need > 0) {
+            var newCard = null;
+
+            if (deck.length > 0) {              /* draw from face-down pile */
+                newCard = deck.shift();
+            } else if (trumpCardData) {         /* pile empty → take trump */
+                newCard       = trumpCardData;
+                trumpCardData = null;           /* trump is now gone */
+
+                var trumpImg = document.getElementById('trump-card-container');
+                if (trumpImg) trumpImg.remove();
+            } else {
+                break;                          /* no cards left anywhere */
+            }
+
+            player.arr.push(newCard);           /* track in player array   */
+            createCardDiv(newCard, player.id);  /* render to DOM           */
+            need--;
         }
-    }
+    });
 
-    // Get the actual number of cards from the DOM for Player 2
-    const player2CardCount = document.querySelectorAll("#player2-cards .card-div").length;
-    const cardsToAddP2 = maxCards - player2CardCount;
-
-    if (cardsToAddP2 > 0) {
-        for (let i = 0; i < cardsToAddP2 && deck.length > 0; i++) {
-            const newCard = deck.shift();
-            player2Cards.push(newCard);
-            createCardDiv(newCard, "player2-cards");
-            console.log(`Added ${newCard.rank} of ${newCard.suit} to Player 2's hand`);
-        }
-    }
+    /* -------- Hide deck back once pile is empty -------- */
+    if (deck.length === 0) hideDeckBack();
 }
-
-
 
 
 let gameOn = false;
@@ -356,17 +468,7 @@ startGameButton.addEventListener('click', () => {
 
         const player1Cards = document.getElementById('player1-cards');
         const player2Cards = document.getElementById('player2-cards');
-
-        // Update turn indicator function
-        function updateTurn() {
-            if (playerOneActive) {
-                player1Button.textContent = "Player 1 (Attacker)";
-                player2Button.textContent = "Player 2 (Defender)";
-            } else {
-                player1Button.textContent = "Player 1 (Defender)";
-                player2Button.textContent = "Player 2 (Attacker)";
-            }
-        }
+        
 
         // Enable dragging for player cards
         function enableDragging(cardsElement) {
@@ -405,76 +507,44 @@ function finishRound() {
     const cards = Array.from(gameArea.children);
     let unbeatenCards = [];
 
-    // Identify unbeaten cards (those without a nested defender)
+    /* --- find unbeaten attack cards --- */
     cards.forEach(card => {
-        const nestedCards = Array.from(card.children).filter(child => child.classList.contains("card-div"));
-        if (nestedCards.length === 0) {
-            unbeatenCards.push(card);
-        }
+        const defended = Array.from(card.children)
+            .some(child => child.classList.contains("card-div"));
+        if (!defended) unbeatenCards.push(card);
     });
 
-    if (unbeatenCards.length > 0) {
-        console.log("Unbeaten cards found. Defender must take them.");
-        // Defender is the NON-active player (if playerOne is attacking, playerTwo is defending)
-        const defenderContainerId = playerOneActive ? "player2-cards" : "player1-cards";
-        const defenderContainer = document.getElementById(defenderContainerId);
+    if (unbeatenCards.length > 0) {                 // defender takes cards
+        const defenderId  = playerOneActive ? "player2-cards" : "player1-cards";
+        const defenderBox = document.getElementById(defenderId);
 
-        // Move all unbeaten cards to defender's hand
         unbeatenCards.forEach(card => {
-            // Get card data from DOM element
-            const rank = card.getAttribute("data-rank");
-            const suit = card.getAttribute("data-suit");
-            const image = card.querySelector("img").src;
-            const cardId = card.id;
-            
-            // Create new card object
-            const cardData = { rank, suit, image, id: cardId };
-            
-            // Add to appropriate player's cards array
-            if (defenderContainerId === "player1-cards") {
-                player1Cards.push(cardData);
-            } else {
-                player2Cards.push(cardData);
-            }
-            
-            // Create the card in defender's hand
-            createCardDiv(cardData, defenderContainerId);
-            
-            // Remove from game area
-            if (gameArea.contains(card)) {
-                gameArea.removeChild(card);
-            }
-            
-            // Remove from gameAreaCards array
-            gameAreaCards = gameAreaCards.filter(c => c.id !== cardId);
-            
-            console.log(`Defender takes: ${rank} of ${suit}`);
+            const rank   = card.getAttribute("data-rank");
+            const suit   = card.getAttribute("data-suit");
+            const image  = card.querySelector("img").src;
+
+            const data = { rank, suit, image, id: card.id };
+            defenderId === "player1-cards" ? player1Cards.push(data)
+                                           : player2Cards.push(data);
+
+            createCardDiv(data, defenderId);
+            gameArea.removeChild(card);
+            gameAreaCards = gameAreaCards.filter(c => c.id !== card.id);
         });
-    }
-
-    // Always process beaten pairs (cards with nested defenders)
-    const beatenCards = Array.from(gameArea.children).filter(card => 
-        Array.from(card.children).some(child => child.classList.contains("card-div"))
-    );
-    
-    if (beatenCards.length > 0) {
-        console.log("Processing beaten cards...");
+        console.log("Defender takes cards. Attacker keeps the turn.");
+        /* attacker stays the same */
+    } else {                                        // all beaten → discard
         discardGameAreaCards();
-    } else if (unbeatenCards.length === 0) {
-        console.log("No cards to process in game area");
+        console.log("Defender becomes attacker.");
+        playerOneActive = !playerOneActive;         // switch roles
     }
-    
-    // Refill hands
-    refillPlayerHands();
-    
-    // Switch active player
-    playerOneActive = !playerOneActive;
-    updateTurn();
-    
-    // Clear current turn rank
-    currentTurnRank = null;
-}
 
+    refillPlayerHands();    // draw new cards
+    updateTurn();           // refresh labels
+    currentTurnRank = null;
+
+    checkGameEnd();         // <-- NOW called once, after refill
+}
 
 
 // On Resize
