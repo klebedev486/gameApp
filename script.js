@@ -235,12 +235,14 @@ function createDragGhost(card) {
     dragGhost.style.zIndex = '9999';
     document.body.appendChild(dragGhost);
 }
+
 function moveDragGhost(x, y) {
     if (dragGhost) {
         dragGhost.style.left = x - 50 + 'px';   // centers 100×150 card
         dragGhost.style.top  = y - 75 + 'px';
     }
 }
+
 function removeDragGhost() {
     if (dragGhost) {
         dragGhost.remove();
@@ -263,33 +265,43 @@ function pointerDown(e) {
 function pointerMove(e) {
     moveDragGhost(e.clientX, e.clientY);
 }
+
 function pointerUp(e) {
-    moveDragGhost(e.clientX, e.clientY);   // final align
+    /* keep ghost in sync until lift-off */
+    moveDragGhost(e.clientX, e.clientY);
     removeDragGhost();
 
+    /* --- detect what’s under the finger/pen --- */
+    pointerCard.style.visibility = 'hidden';                 // hide dragged card
     const targetEl = document.elementFromPoint(e.clientX, e.clientY);
+    pointerCard.style.visibility = 'visible';                // show it again
+
     if (targetEl) {
-        /* ---- emulate existing drop logic ---- */
+        /* attack: drop onto the table */
         if (targetEl.id === 'game-area-cards') {
             drop({
-                preventDefault(){},
-                dataTransfer:{ getData: () => pointerCard.id },
+                preventDefault() {},
+                dataTransfer: { getData: () => pointerCard.id },
                 target: targetEl
             });
-        } else if (targetEl.classList.contains('card-div')) {
+        }
+        /* defense: drop onto another card */
+        else if (targetEl.classList.contains('card-div')) {
             beatCard({
-                preventDefault(){},
-                dataTransfer:{ getData: () => pointerCard.id },
+                preventDefault() {},
+                dataTransfer: { getData: () => pointerCard.id },
                 currentTarget: targetEl
             });
         }
     }
 
+    /* clean up pointer capture & listeners */
     pointerCard.releasePointerCapture(e.pointerId);
     pointerCard.removeEventListener('pointermove', pointerMove);
-    pointerCard.removeEventListener('pointerup',   pointerUp);
+    pointerCard.removeEventListener('pointerup', pointerUp);
     pointerCard = null;
 }
+
 
 
 function isValidAttackRank(rank) {
