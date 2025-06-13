@@ -608,48 +608,54 @@ startGameButton.addEventListener('click', () => {
 
 
 function finishRound() {
-    const gameArea = document.getElementById("game-area-cards");
-    const cards = Array.from(gameArea.children);
-    let unbeatenCards = [];
+    const gameArea  = document.getElementById("game-area-cards");
+    const topStacks = Array.from(gameArea.children);     // each attack stack
+    let unbeatenFound = false;
 
-    /* --- find unbeaten attack cards --- */
-    cards.forEach(card => {
-        const defended = Array.from(card.children)
+    /* --- detect whether every stack was beaten --- */
+    topStacks.forEach(stack => {
+        const defended = Array.from(stack.children)
             .some(child => child.classList.contains("card-div"));
-        if (!defended) unbeatenCards.push(card);
+        if (!defended) unbeatenFound = true;             // at least one failed
     });
 
-    if (unbeatenCards.length > 0) {                 // defender takes cards
-        const defenderId  = playerOneActive ? "player2-cards" : "player1-cards";
-        const defenderBox = document.getElementById(defenderId);
+    /* ----------  CASE 1 : defender failed → takes ALL stacks ---------- */
+    if (unbeatenFound) {
+        const defenderId = playerOneActive ? "player2-cards" : "player1-cards";
 
-        unbeatenCards.forEach(card => {
-            const rank   = card.getAttribute("data-rank");
-            const suit   = card.getAttribute("data-suit");
-            const image  = card.querySelector("img").src;
+        topStacks.forEach(stack => {
+            /* move entire stack to defender’s hand */
+            collectCards(stack).forEach(cardEl => {
+                const rank  = cardEl.getAttribute("data-rank");
+                const suit  = cardEl.getAttribute("data-suit");
+                const image = cardEl.querySelector("img").src;
 
-            const data = { rank, suit, image, id: card.id };
-            defenderId === "player1-cards" ? player1Cards.push(data)
-                                           : player2Cards.push(data);
-
-            createCardDiv(data, defenderId);
-            gameArea.removeChild(card);
-            gameAreaCards = gameAreaCards.filter(c => c.id !== card.id);
+                const data = { rank, suit, image, id: cardEl.id };
+                defenderId === "player1-cards" ? player1Cards.push(data)
+                                               : player2Cards.push(data);
+                createCardDiv(data, defenderId);
+            });
+            gameArea.removeChild(stack);
         });
-        console.log("Defender takes cards. Attacker keeps the turn.");
-        /* attacker stays the same */
-    } else {                                        // all beaten → discard
-        discardGameAreaCards();
-        console.log("Defender becomes attacker.");
-        playerOneActive = !playerOneActive;         // switch roles
+
+        gameAreaCards.length = 0;                        // clear helper array
+        console.log("Defender takes ALL cards. Attacker keeps the turn.");
+        /* attacker stays attacker */
     }
 
-    refillPlayerHands();    // draw new cards
-    updateTurn();           // refresh labels
-    currentTurnRank = null;
+    /* ----------  CASE 2 : all beaten → discard table, swap roles ------ */
+    else {
+        discardGameAreaCards();
+        console.log("All cards beaten. Defender becomes attacker.");
+        playerOneActive = !playerOneActive;              // swap roles
+    }
 
-    checkGameEnd();         // <-- NOW called once, after refill
+    refillPlayerHands();      // draw up to 6 each
+    updateTurn();             // update heading labels
+    currentTurnRank = null;   // reset rank tracking
+    checkGameEnd();           // see if someone just won
 }
+
 
 
 // On Resize
