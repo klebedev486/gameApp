@@ -252,17 +252,17 @@ function removeDragGhost() {
 
 /* ========= POINTER EVENTS (touch + pen + mouse) ========= */
 function pointerDown(e) {
-    /* 1️⃣  Ignore desktop mouse-button drags (they use native drag) */
+    /* 1️⃣  Ignore desktop mouse drags—native HTML-drag handles those */
     if (e.pointerType === 'mouse') return;
 
     /* 2️⃣  Prevent the page itself from scrolling while dragging */
     e.preventDefault();
 
-    /* 3️⃣  Record which card is being dragged and capture the pointer */
+    /* 3️⃣  Record the card being dragged and capture the pointer */
     pointerCard = e.currentTarget;
     pointerCard.setPointerCapture(e.pointerId);
 
-    /* 4️⃣  Create the semi-transparent ghost that follows the finger */
+    /* 4️⃣  Create a semi-transparent “ghost” that follows the finger */
     createDragGhost(pointerCard);
     moveDragGhost(e.clientX, e.clientY);
 
@@ -276,32 +276,35 @@ function pointerMove(e) {
 }
 
 function pointerUp(e) {
-    /* keep ghost synced until lift-off */
+    /*  keep ghost aligned until lift-off  */
     moveDragGhost(e.clientX, e.clientY);
     removeDragGhost();
 
-    /* ---- detect what's under the finger/pen ---- */
-    pointerCard.style.visibility = 'hidden';                     // hide source
-    const elem = document.elementFromPoint(e.clientX, e.clientY);
+    /* ---- detect what’s underneath ---- */
+    pointerCard.style.visibility = 'hidden';                   // hide source
+    const rawElem  = document.elementFromPoint(e.clientX, e.clientY);
     pointerCard.style.visibility = 'visible';
 
     let handled = false;
 
-    if (elem) {
-        /* 1️⃣  DEFENSE: find nearest attacker card wrapper */
-        const targetCard = elem.closest && elem.closest('.card-div');
-        if (targetCard && targetCard !== pointerCard) {          // not self
+    if (rawElem) {
+        /* 1️⃣  DEFENSE: attacker card under finger? */
+        const attackerCard = rawElem.closest &&
+                             rawElem.closest('#game-area-cards .card-div');
+
+        if (attackerCard && attackerCard !== pointerCard) {    // not self
             beatCard({
                 preventDefault() {},
                 dataTransfer: { getData: () => pointerCard.id },
-                currentTarget: targetCard
+                currentTarget: attackerCard
             });
             handled = true;
         }
 
-        /* 2️⃣  ATTACK: drop into the empty table */
+        /* 2️⃣  ATTACK: finger over empty table area */
         if (!handled) {
-            const table = elem.closest('#game-area-cards');
+            const table = rawElem.closest &&
+                          rawElem.closest('#game-area-cards');
             if (table) {
                 drop({
                     preventDefault() {},
@@ -312,12 +315,13 @@ function pointerUp(e) {
         }
     }
 
-    /* cleanup */
+    /* ----- clean up pointer capture & listeners ----- */
     pointerCard.releasePointerCapture(e.pointerId);
     pointerCard.removeEventListener('pointermove', pointerMove);
     pointerCard.removeEventListener('pointerup',   pointerUp);
     pointerCard = null;
 }
+
 
 
 
