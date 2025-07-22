@@ -331,34 +331,29 @@ function refillPlayerHands() {
 /* ======================================
  * End-of-game detection & modal
  * ====================================== */
-function checkGameEnd() {
-    const deckEmpty = deck.length === 0 && !trumpCardData;
-    if (!deckEmpty) return;
 
-    const p1Left = document.querySelectorAll('#player1-cards .card-div').length;
-    const p2Left = document.querySelectorAll('#player2-cards .card-div').length;
+function checkGameEnd() {
+    /* 1️⃣  No more cards anywhere to draw */
+    const deckEmpty = deck.length === 0 && !trumpCardData;
+
+    /* 2️⃣  No cards in either player’s array AND nothing left on the table */
+    const p1Left = player1Cards.length + document.querySelectorAll('#player1-cards .card-div').length;
+    const p2Left = player2Cards.length + document.querySelectorAll('#player2-cards .card-div').length;
+    const tableEmpty = gameAreaCards.length === 0;   // no stacks waiting to resolve
+
+    if (!deckEmpty || !tableEmpty) return;           // game can’t finish yet
 
     let result = '';
     if (p1Left === 0 && p2Left === 0)      result = "It's a draw!";
     else if (p1Left === 0)                 result = "Player 1 wins!";
     else if (p2Left === 0)                 result = "Player 2 wins!";
-    else                                   return;
+    else                                   return;  // someone still holds cards
 
+    /* ----- show modal ----- */
     const modal = document.getElementById('gameover-modal');
     document.getElementById('gameover-text').textContent = result + '  Start a new game?';
     modal.style.display = 'block';
 }
-/* game-over modal buttons */
-document.getElementById('gameover-yes').onclick = () => location.reload();
-document.getElementById('gameover-no').onclick  = () =>
-    document.getElementById('gameover-modal').style.display = 'none';
-
-/* ======================================
- * Game start / UI buttons
- * ====================================== */
-const startBtn = document.getElementById('start-game');
-const p1Label  = document.getElementById('player-1');
-const p2Label  = document.getElementById('player-2');
 
 startBtn.addEventListener('click', () => {
     if (gameOn) {
