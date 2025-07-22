@@ -335,96 +335,76 @@ function isValidAttackRank(rank) {
 
 function drop(event) {
     event.preventDefault();
-
-    /* ----------  TURN‑PHASE GUARD  ---------- */
     if (turnPhase !== "attack") return;
 
     const cardId      = event.dataTransfer.getData("text/plain");
     const draggedCard = document.getElementById(cardId);
+    if (!draggedCard) return;
 
-    /* ----------  WHO MAY ATTACK  ---------- */
     if (playerOneActive && !isCardFromPlayer1(draggedCard)) return;
     if (!playerOneActive && !isCardFromPlayer2(draggedCard)) return;
 
-    /* ----------  VALID RANK CHECK  ---------- */
-    if (draggedCard && event.target.id === "game-area-cards") {
-        const rank = draggedCard.getAttribute("data-rank");
-        const suit = draggedCard.getAttribute("data-suit");
+    const rank = draggedCard.getAttribute("data-rank");
+    const suit = draggedCard.getAttribute("data-suit");
+    const img  = draggedCard.querySelector("img").src;
 
-        if (gameAreaCards.length === 0) {
-            currentTurnRank = rank;                 // first attack sets the rank
-        } else if (!isValidAttackRank(rank)) {
-            console.log("Invalid rank for attack.");
-            return;
-        }
+    if (gameAreaCards.length !== 0 && !isValidAttackRank(rank)) return;
 
-        /* ----------  RENDER ON TABLE  ---------- */
-        const instruction = document.querySelector("#game-area-cards h2");
-        if (instruction) instruction.remove();
+    // first card sets the working rank
+    if (gameAreaCards.length === 0) currentTurnRank = rank;
 
-        event.target.appendChild(draggedCard);
-        draggedCard.addEventListener("dragover", allowDrop);
-        draggedCard.addEventListener("drop", beatCard);
+    // ⬇️ render
+    const instruction = document.querySelector("#game-area-cards h2");
+    if (instruction) instruction.remove();
+    event.target.appendChild(draggedCard);
+    draggedCard.addEventListener("dragover", allowDrop);
+    draggedCard.addEventListener("drop", beatCard);
 
-        /* ----------  SAVE FULL STACK  ---------- */
-        gameAreaCards.push({
-            attacker: { rank, suit, id: cardId },
-            defender: null
-        });
-    }
+    // ⬇️ array
+    gameAreaCards.push({
+        attacker: { rank, suit, id: cardId, image: img },
+        defender: null
+    });
 }
-
 
 
 function beatCard(event) {
     event.preventDefault();
 
-    const defenderCardId = event.dataTransfer.getData("text/plain");
-    const defenderCard   = document.getElementById(defenderCardId);
-    const attackerCard   = event.currentTarget;          // top‑level card
+    const defenderId  = event.dataTransfer.getData("text/plain");
+    const defenderEl  = document.getElementById(defenderId);
+    const attackerEl  = event.currentTarget;
 
-    /* ----------  WHO MAY DEFEND  ---------- */
-    if (playerOneActive && isCardFromPlayer1(defenderCard)) return;
-    if (!playerOneActive && isCardFromPlayer2(defenderCard)) return;
+    if (!defenderEl || attackerEl.children.length > 1) return;
 
-    /* ----------  ALREADY BEAT?  ---------- */
-    if (attackerCard.children.length > 1) return;
+    if (playerOneActive && isCardFromPlayer1(defenderEl)) return;
+    if (!playerOneActive && isCardFromPlayer2(defenderEl)) return;
 
-    /* ----------  RANK & TRUMP VALIDATION  ---------- */
-    const defRank = parseInt(defenderCard.getAttribute("data-rank"));
-    const defSuit = defenderCard.getAttribute("data-suit");
-    const attRank = parseInt(attackerCard.getAttribute("data-rank"));
-    const attSuit = attackerCard.getAttribute("data-suit");
+    const defRank = +defenderEl.dataset.rank;
+    const defSuit = defenderEl.dataset.suit;
+    const attRank = +attackerEl.dataset.rank;
+    const attSuit = attackerEl.dataset.suit;
 
-    let ok =
-        (defSuit === attSuit && defRank > attRank) ||                     // higher same suit
-        (defSuit === trumpSuit && attSuit !== trumpSuit) ||               // trump over non‑trump
-        (defSuit === trumpSuit && attSuit === trumpSuit && defRank > attRank); // higher trump
+    const ok =
+        (defSuit === attSuit && defRank > attRank) ||
+        (defSuit === trumpSuit && attSuit !== trumpSuit) ||
+        (defSuit === trumpSuit && attSuit === trumpSuit && defRank > attRank);
 
-    if (!ok) {
-        console.log("Invalid defense.");
-        return;
-    }
+    if (!ok) return;
 
-    /* ----------  VISUALLY STACK THE CARD  ---------- */
-    attackerCard.appendChild(defenderCard);
-    defenderCard.style.position = "absolute";
-    defenderCard.style.top  = "20px";
-    defenderCard.style.left = "20px";
+    // --- UI ---
+    attackerEl.appendChild(defenderEl);
+    defenderEl.style.position = "absolute";
+    defenderEl.style.top  = "20px";
+    defenderEl.style.left = "20px";
 
-    /* ----------  UPDATE THE DATA MODEL  ---------- */
-    const stack = gameAreaCards.find(
-        s => s.attacker.id === attackerCard.id && s.defender === null
-    );
+    // --- array ---
+    const img = defenderEl.querySelector("img").src;
+    const stack = gameAreaCards.find(s => s.attacker.id === attackerEl.id);
     if (stack) {
-        stack.defender = {
-            rank: defenderCard.getAttribute("data-rank"),
-            suit: defenderCard.getAttribute("data-suit"),
-            id: defenderCardId
-        };
+        stack.defender = { rank: defRank.toString(), suit: defSuit, id: defenderId, image: img };
     }
 }
-
 
 function discardGameAreaCards() {
     const gameArea = document.getElementById("game-area-cards");
@@ -577,61 +557,65 @@ startGameButton.addEventListener('click', () => {
 });
 
 
-/* -----------------------------------------------------------
- *  FINISH ROUND  — array‑based logic
- * -----------------------------------------------------------
- *  - If ANY stack still has defender === null  → defender fails
- *  - Otherwise everything is beaten            → discard & swap
- */
 function finishRound() {
-    /* 1️⃣  Is there at least one unbeaten attacker card? */
-    const unbeatenFound = gameAreaCards.some(stack => stack.defender === null);
+    /* ── 1. Success or failure? ────────────────────────────── */
+    const defenderFailed = gameAreaCards.some(s => s.defender === null);
 
-    /* ----------  CASE 1 : defender failed → takes ALL stacks ---------- */
-    if (unbeatenFound) {
+    /* Helper: move existing element or recreate it */
+    function transferCard(cardObj, targetId) {
+        const target = document.getElementById(targetId);
+        let el       = document.getElementById(cardObj.id);
+
+        if (el) {
+            // scrub inline coords left over from defense
+            el.style.position = "";
+            el.style.top = el.style.left = "";
+            target.appendChild(el);           // physical move, no clone
+        } else {
+            // (shouldn’t happen, but safe fallback)
+            createCardDiv(
+                { rank: cardObj.rank, suit: cardObj.suit, image: cardObj.image, id: cardObj.id },
+                targetId
+            );
+        }
+    }
+
+    /* ── 2A. Defender fails → pick up everything ───────────── */
+    if (defenderFailed) {
         const defenderId = playerOneActive ? "player2-cards" : "player1-cards";
 
-        /* move every attacker + defender card into defender’s hand */
         gameAreaCards.forEach(stack => {
-            [stack.attacker, stack.defender]   // defender may be null
-              .filter(Boolean)                 // skip nulls
-              .forEach(cardObj => {
-                  const el    = document.getElementById(cardObj.id);
-                  const image = el.querySelector("img").src;
+            [stack.attacker, stack.defender]
+              .filter(Boolean)
+              .forEach(c => transferCard(c, defenderId));
+        });
 
-                  const data = {
-                      rank: cardObj.rank,
-                      suit: cardObj.suit,
-                      image,
-                      id:   cardObj.id
-                  };
-                  defenderId === "player1-cards"
-                      ? player1Cards.push(data)
-                      : player2Cards.push(data);
-                  createCardDiv(data, defenderId);
+        console.log("Defender takes all cards – attacker keeps the turn.");
+    }
 
-                  /* remove from table */
+    /* ── 2B. All beaten → discard & swap roles ─────────────── */
+    else {
+        gameAreaCards.forEach(stack => {
+            [stack.attacker, stack.defender]
+              .filter(Boolean)
+              .forEach(c => {
+                  discardPile.push({ rank: c.rank, suit: c.suit });
+                  const el = document.getElementById(c.id);
                   if (el && el.parentElement) el.parentElement.removeChild(el);
               });
         });
 
-        console.log("Defender takes ALL cards. Attacker keeps the turn.");
-        /* attacker remains the same */
+        console.log("All cards beaten – defender becomes attacker.");
+        playerOneActive = !playerOneActive;
     }
 
-    /* ----------  CASE 2 : everything beaten → discard & swap roles ----- */
-    else {
-        discardGameAreaCards();                // already uses gameAreaCards
-        console.log("All cards beaten. Defender becomes attacker.");
-        playerOneActive = !playerOneActive;    // swap roles
-    }
+    /* ── 3. Common cleanup ─────────────────────────────────── */
+    gameAreaCards = [];
+    currentTurnRank = null;
 
-    /* ----------  round housekeeping ---------- */
-    gameAreaCards = [];                        // clear table state
-    refillPlayerHands();                       // draw up to 6
-    updateTurn();                              // refresh UI labels
-    currentTurnRank = null;                    // reset rank tracking
-    checkGameEnd();                            // someone win?
+    refillPlayerHands();
+    updateTurn();
+    checkGameEnd();
 }
 
 
