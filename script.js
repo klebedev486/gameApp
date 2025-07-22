@@ -1,14 +1,12 @@
 /* ======================================
- * Durak — array-driven logic (human + bot)
- *   – HUMAN = Player 1
- *   – BOT   = Player 2   (handled in botAI.js)
+ * Durak — array-driven game logic
  * ====================================== */
 
 /* ---------- card constants ---------- */
-const RANKS = ["6","7","8","9","10","11","12","13","14"];   // 11=J…
+const RANKS = ["6","7","8","9","10","11","12","13","14"]; // 11=J,12=Q,13=K,14=A
 const SUITS = ["clubs","diamonds","hearts","spades"];
 
-/* ---------- deck helpers ---------- */
+/* ---------- build & shuffle deck ---------- */
 function createDeck(){
   const d=[];
   for(const s of SUITS) for(const r of RANKS)
@@ -23,55 +21,51 @@ function shuffleDeck(){
   }
 }
 
-/* ---------- game state ---------- */
-let player1Cards=[], player2Cards=[];
-let gameAreaCards=[];                      // [{attacker:{…}, defender:{…}|null}]
+/* ---------- game-state arrays ---------- */
+let player1Cards=[],player2Cards=[];
+let gameAreaCards=[];              // [{attacker:{}, defender:{|null}}, …]
 let discardPile=[];
 
-let trumpSuit=null, trumpCardData=null;
-let playerOneActive=false;                 // true = P1 attacking
-let gameOn=false;
+/* ---------- other state ---------- */
+let trumpSuit=null,trumpCardData=null;
+let playerOneActive=false,gameOn=false;
 
-/* ---------- drag helpers ---------- */
-let dragGhost=null, pointerCard=null;
+/* ---------- drag helper vars ---------- */
+let dragGhost=null,pointerCard=null;
 
 /* ======================================
- * UI helpers
+ * Utility / UI helpers
  * ====================================== */
 function updateTurn(){
   const p1=document.getElementById('player-1-btn')||document.getElementById('player-1');
   const p2=document.getElementById('player-2-btn')||document.getElementById('player-2');
-  if(playerOneActive){ p1.textContent='Player 1 Turn'; p2.textContent='Player 2'; }
-  else                { p1.textContent='Player 1';    p2.textContent='Player 2 Turn'; }
+  if(playerOneActive){p1.textContent='Player 1 Turn';p2.textContent='Player 2';}
+  else{p1.textContent='Player 1';p2.textContent='Player 2 Turn';}
 }
-const isCardFromPlayer1 = el => !!el.closest('#player1-cards');
-const isCardFromPlayer2 = el => !!el.closest('#player2-cards');
+const isCardFromPlayer1=el=>!!el.closest('#player1-cards');
+const isCardFromPlayer2=el=>!!el.closest('#player2-cards');
 
 function hideDeckBack(){
   const back=document.getElementById("deck-back-image");
   if(back && !back.classList.contains("invisible")) back.classList.add("invisible");
 }
 
-function adjustCardSpacing(row){
-  if(!row||!row.children.length) return;
-  const cardW=row.children[0].offsetWidth;
-  const cnt  =row.children.length;
-  const mid  =row.parentElement.clientWidth;
-  const max  =15;
-  const natural=cardW*cnt;
+function adjustCardSpacing(c){
+  if(!c||!c.children.length) return;
+  const w=c.children[0].offsetWidth, cnt=c.children.length, mid=c.parentElement.clientWidth,maxGap=15;
+  const natural=w*cnt;
   let gap;
-  if(natural+max*(cnt-1)<=mid) gap=max;
-  else if(natural<=mid)        gap=(mid-natural)/(cnt-1);
-  else                         gap=-40;
-  Array.from(row.children).forEach((c,i)=>c.style.marginRight=i===cnt-1?'0':' '+gap+'px');
+  if(natural+maxGap*(cnt-1)<=mid) gap=maxGap;
+  else if(natural<=mid) gap=(mid-natural)/(cnt-1);
+  else gap=-40;
+  Array.from(c.children).forEach((el,i)=>el.style.marginRight=i===cnt-1?'0px':gap+'px');
 }
 
 /* ======================================
- * Card creation
+ * Card DOM creation
  * ====================================== */
 function createCardDiv(card,targetId){
-  if(document.getElementById(card.id||`${card.rank}-${card.suit}`)) return; // prevent dup
-  const row=document.getElementById(targetId);
+  const target=document.getElementById(targetId);
   const div=document.createElement("div");
   div.className="card-div";
   div.id=card.id||`${card.rank}-${card.suit}`;
@@ -90,20 +84,21 @@ function createCardDiv(card,targetId){
     div.addEventListener('dragover',allowDrop);
     div.addEventListener('drop',beatCard);
   }
-  row.appendChild(div);
-  img.onload=()=>adjustCardSpacing(row);
+  target.appendChild(div);
+  img.onload=()=>adjustCardSpacing(target);
 }
 
 /* ======================================
- * Deal
+ * Initial deal
  * ====================================== */
 function dealCards(){
-  const p1=deck.splice(0,6), p2=deck.splice(0,6);
+  const p1=deck.splice(0,6),p2=deck.splice(0,6);
   p1.forEach(c=>{player1Cards.push(c);createCardDiv(c,"player1-cards");});
   p2.forEach(c=>{player2Cards.push(c);createCardDiv(c,"player2-cards");});
 
   const trump=deck.shift(); trumpCardData=trump; trumpSuit=trump.suit;
-  const tc=document.createElement("div"); tc.id="trump-card-container";
+
+  const tc=document.createElement("div");tc.id="trump-card-container";
   Object.assign(tc.style,{position:"absolute",top:"60%",left:"60%",pointerEvents:"none"});
   const ti=document.createElement("img");
   Object.assign(ti.style,{width:"90px",height:"140px",border:"2px solid gold",borderRadius:"5px"});
@@ -119,13 +114,13 @@ function dealCards(){
 }
 
 /* ======================================
- * Drag logic
+ * Drag & Drop
  * ====================================== */
 function dragStart(e){e.dataTransfer.setData("text/plain",e.currentTarget.id);}
 function allowDrop(e){e.preventDefault();}
 
-function createGhost(c){
-  dragGhost=c.cloneNode(true);
+function createDragGhost(card){
+  dragGhost=card.cloneNode(true);
   Object.assign(dragGhost.style,{position:'fixed',pointerEvents:'none',opacity:'0.8',zIndex:'9999'});
   document.body.appendChild(dragGhost);
 }
@@ -133,68 +128,60 @@ const moveGhost=(x,y)=>dragGhost&&(dragGhost.style.left=x-50+'px',dragGhost.styl
 const removeGhost=()=>{if(dragGhost){dragGhost.remove();dragGhost=null;}};
 
 function pointerDown(e){
-  if(e.pointerType==='mouse') return;
+  if(e.pointerType==='mouse')return;
   e.preventDefault();
   pointerCard=e.currentTarget;
   pointerCard.setPointerCapture(e.pointerId);
-  createGhost(pointerCard); moveGhost(e.clientX,e.clientY);
-  pointerCard.addEventListener('pointermove',pMove);
-  pointerCard.addEventListener('pointerup',pUp);
+  createDragGhost(pointerCard); moveGhost(e.clientX,e.clientY);
+  pointerCard.addEventListener('pointermove',pmove);
+  pointerCard.addEventListener('pointerup',pup);
 }
-const pMove=e=>moveGhost(e.clientX,e.clientY);
-function pUp(e){
+const pmove=e=>moveGhost(e.clientX,e.clientY);
+function pup(e){
   moveGhost(e.clientX,e.clientY); removeGhost();
   pointerCard.style.visibility='hidden';
-  const tgt=document.elementFromPoint(e.clientX,e.clientY);
+  const elt=document.elementFromPoint(e.clientX,e.clientY);
   pointerCard.style.visibility='visible';
 
-  if(tgt){
-    const atk=tgt.closest('#game-area-cards .card-div');
+  if(elt){
+    const atk=elt.closest('#game-area-cards .card-div');
     if(atk && atk!==pointerCard){
       beatCard({preventDefault(){},dataTransfer:{getData:()=>pointerCard.id},currentTarget:atk});
     }else{
-      const tbl=tgt.closest('#game-area-cards');
+      const tbl=elt.closest('#game-area-cards');
       if(tbl) drop({preventDefault(){},dataTransfer:{getData:()=>pointerCard.id},target:tbl});
     }
   }
   pointerCard.releasePointerCapture(e.pointerId);
-  pointerCard.removeEventListener('pointermove',pMove);
-  pointerCard.removeEventListener('pointerup',pUp);
+  pointerCard.removeEventListener('pointermove',pmove);
+  pointerCard.removeEventListener('pointerup',pup);
   pointerCard=null;
 }
 
-/* ---------- helpers ---------- */
-const validAttack=r=>gameAreaCards.some(s=>s.attacker.rank===r||(s.defender&&s.defender.rank===r));
+/* ---------- rank helper ---------- */
+const isValidAttackRank=r=>gameAreaCards.some(s=>s.attacker.rank===r||(s.defender&&s.defender.rank===r));
 
 /* ======================================
- * drop() — human or bot attacker
+ * drop() — attacker plays
  * ====================================== */
 function drop(e){
   e.preventDefault();
   const id=e.dataTransfer.getData("text/plain");
   const el=document.getElementById(id); if(!el) return;
-
   if(playerOneActive && !isCardFromPlayer1(el)) return;
   if(!playerOneActive && !isCardFromPlayer2(el)) return;
 
-  const rank=el.dataset.rank, suit=el.dataset.suit, img=el.querySelector("img").src;
-  if(gameAreaCards.length && !validAttack(rank)) return;
+  const rank=el.dataset.rank,suit=el.dataset.suit,img=el.querySelector("img").src;
+  if(gameAreaCards.length && !isValidAttackRank(rank)) return;
 
-  document.querySelector("#game-area-cards h2")?.remove();
+  const ph=document.querySelector("#game-area-cards h2"); if(ph) ph.remove();
   e.target.appendChild(el);
-  el.addEventListener('dragover',allowDrop);
-  el.addEventListener('drop',beatCard);
+  el.addEventListener('dragover',allowDrop); el.addEventListener('drop',beatCard);
 
   gameAreaCards.push({attacker:{rank,suit,id,image:img},defender:null});
   adjustCardSpacing(document.getElementById("game-area-cards"));
-  adjustCardSpacing(isCardFromPlayer1(el)?document.getElementById("player1-cards")
-                                         :document.getElementById("player2-cards"));
-
-  /* Bot responds if it is defender */
-  if( (botAI.HUMAN_IS_P1 &&  playerOneActive) ||
-      (!botAI.HUMAN_IS_P1 && !playerOneActive) ){
-      botAI.botDefend();
-  }
+  /* spacing for hand after removal */
+  adjustCardSpacing(isCardFromPlayer1(el)?document.getElementById("player1-cards"):document.getElementById("player2-cards"));
 }
 
 /* ======================================
@@ -210,93 +197,88 @@ function beatCard(e){
   if(playerOneActive && isCardFromPlayer1(defEl)) return;
   if(!playerOneActive && isCardFromPlayer2(defEl)) return;
 
-  const defRank=+defEl.dataset.rank, defSuit=defEl.dataset.suit;
-  const attRank=+atkEl.dataset.rank, attSuit=atkEl.dataset.suit;
-  const legal=(defSuit===attSuit&&defRank>attRank)||
-              (defSuit===trumpSuit&&attSuit!==trumpSuit)||
-              (defSuit===trumpSuit&&attSuit===trumpSuit&&defRank>attRank);
-  if(!legal) return;
+  const defRank=+defEl.dataset.rank,defSuit=defEl.dataset.suit;
+  const attRank=+atkEl.dataset.rank,attSuit=atkEl.dataset.suit;
+  const ok=(defSuit===attSuit&&defRank>attRank)||
+           (defSuit===trumpSuit&&attSuit!==trumpSuit)||
+           (defSuit===trumpSuit&&attSuit===trumpSuit&&defRank>attRank);
+  if(!ok) return;
 
-  const srcRow=isCardFromPlayer1(defEl)?'player1-cards':'player2-cards';
+  const oldHandId=isCardFromPlayer1(defEl)?'player1-cards':'player2-cards';
   atkEl.appendChild(defEl);
   Object.assign(defEl.style,{position:"absolute",top:"20px",left:"20px"});
 
   const img=defEl.querySelector("img").src;
   const stk=gameAreaCards.find(s=>s.attacker.id===atkEl.id);
   if(stk) stk.defender={rank:defRank.toString(),suit:defSuit,id:defId,image:img};
-  adjustCardSpacing(document.getElementById(srcRow));
 
-  /* Bot may add more attack cards after human defends */
-  if( (botAI.HUMAN_IS_P1 && !playerOneActive) ||
-      (!botAI.HUMAN_IS_P1 &&  playerOneActive) ){
-      botAI.botAddAttack();
-  }
+  adjustCardSpacing(document.getElementById(oldHandId));
 }
 
 /* ======================================
  * finishRound()
  * ====================================== */
 function finishRound(){
-  const failed=gameAreaCards.some(s=>!s.defender);
-  const defHandId=playerOneActive?"player2-cards":"player1-cards";
-  const defArr   =defHandId==='player1-cards'?player1Cards:player2Cards;
-  const atkArr   =defHandId==='player1-cards'?player2Cards:player1Cards;
-  const defRow   =document.getElementById(defHandId);
+  const defenderFailed=gameAreaCards.some(s=>!s.defender);
+  const defenderHandId=playerOneActive?"player2-cards":"player1-cards";
+  const defenderHandEl=document.getElementById(defenderHandId);
+  const destArr=defenderHandId==='player1-cards'?player1Cards:player2Cards;
+  const srcArr=defenderHandId==='player1-cards'?player2Cards:player1Cards;
 
-  const moveCard=c=>{
-    const idx=atkArr.findIndex(k=>k.id===c.id);
-    if(idx!==-1) atkArr.splice(idx,1);
-    if(!defArr.some(k=>k.id===c.id)) defArr.push(c);
+  const moveCard=(cObj)=>{
+    /* remove from previous owner array */
+    const idx=srcArr.findIndex(k=>k.id===cObj.id);
+    if(idx!==-1) srcArr.splice(idx,1);
+    /* avoid duplicates in dest array */
+    if(!destArr.some(k=>k.id===cObj.id)) destArr.push(cObj);
 
-    let el=document.getElementById(c.id);
+    let el=document.getElementById(cObj.id);
     if(el){
-      el.style.position=""; el.style.top=el.style.left="";
-      defRow.appendChild(el);
-    }else if(!document.getElementById(c.id)){
-      createCardDiv(c,defHandId);
+      el.style.position="";el.style.top=el.style.left="";
+      defenderHandEl.appendChild(el);
+    }else if(!document.getElementById(cObj.id)){
+      createCardDiv(cObj,defenderHandId);
     }
   };
 
-  if(failed){
-    gameAreaCards.forEach(s=>[s.attacker,s.defender].filter(Boolean).forEach(moveCard));
+  if(defenderFailed){
+    gameAreaCards.forEach(stk=>[stk.attacker,stk.defender].filter(Boolean).forEach(moveCard));
+    console.log("Defender takes all cards – attacker keeps turn.");
   }else{
-    gameAreaCards.forEach(s=>{
-      [s.attacker,s.defender].filter(Boolean).forEach(c=>{
-        const owner=player1Cards.find(k=>k.id===c.id)?player1Cards:player2Cards;
-        const idx=owner.findIndex(k=>k.id===c.id);
-        if(idx!==-1) owner.splice(idx,1);
+    gameAreaCards.forEach(stk=>{
+      [stk.attacker,stk.defender].filter(Boolean).forEach(c=>{
+        const ownerArr=player1Cards.find(k=>k.id===c.id)?player1Cards:player2Cards;
+        const idx=ownerArr.findIndex(k=>k.id===c.id);
+        if(idx!==-1) ownerArr.splice(idx,1);
         discardPile.push({rank:c.rank,suit:c.suit});
         const el=document.getElementById(c.id);
-        el?.parentElement?.removeChild(el);
+        if(el && el.parentElement) el.parentElement.removeChild(el);
       });
     });
+    console.log("All cards beaten – defender becomes attacker.");
     playerOneActive=!playerOneActive;
   }
 
-  adjustCardSpacing(defRow);
-  gameAreaCards=[]; refillHands(); updateTurn(); checkGameEnd();
-
-  /* If bot becomes attacker, start its attack */
-  if(!botAI.HUMAN_IS_P1 && playerOneActive)  botAI.botAddAttack();
-  if( botAI.HUMAN_IS_P1 && !playerOneActive) botAI.botAddAttack();
+  adjustCardSpacing(defenderHandEl);
+  gameAreaCards=[]; refillPlayerHands(); updateTurn(); checkGameEnd();
 }
 
 /* ======================================
- * refillHands()
+ * Refill hands
  * ====================================== */
-function refillHands(){
+function refillPlayerHands(){
   const MAX=6;
-  const seq=playerOneActive
+  const order=playerOneActive
     ?[{id:'player1-cards',arr:player1Cards},{id:'player2-cards',arr:player2Cards}]
     :[{id:'player2-cards',arr:player2Cards},{id:'player1-cards',arr:player1Cards}];
 
-  seq.forEach(p=>{
+  order.forEach(p=>{
     let need=MAX-document.querySelectorAll(`#${p.id} .card-div`).length;
     while(need>0){
       let card=null;
       if(deck.length) card=deck.shift();
       else if(trumpCardData){card=trumpCardData;trumpCardData=null;
-        document.getElementById('trump-card-container')?.remove();}
+        const t=document.getElementById('trump-card-container');if(t)t.remove();}
       else break;
       p.arr.push(card); createCardDiv(card,p.id); need--;
     }
@@ -306,26 +288,29 @@ function refillHands(){
 }
 
 /* ======================================
- * end-game
+ * End-of-game detection
  * ====================================== */
 function checkGameEnd(){
   const deckEmpty=deck.length===0 && !trumpCardData;
+  const p1Left=document.querySelectorAll('#player1-cards .card-div').length;
+  const p2Left=document.querySelectorAll('#player2-cards .card-div').length;
   if(!deckEmpty||gameAreaCards.length) return;
-  const p1=document.querySelectorAll('#player1-cards .card-div').length;
-  const p2=document.querySelectorAll('#player2-cards .card-div').length;
+
   let msg='';
-  if(p1===0&&p2===0) msg="It's a draw!";
-  else if(p1===0)    msg="Player 1 wins!";
-  else if(p2===0)    msg="Player 2 wins!";
+  if(p1Left===0&&p2Left===0) msg="It's a draw!";
+  else if(p1Left===0)        msg="Player 1 wins!";
+  else if(p2Left===0)        msg="Player 2 wins!";
   else return;
+
+  const m=document.getElementById('gameover-modal');
   document.getElementById('gameover-text').textContent=msg+'  Start a new game?';
-  document.getElementById('gameover-modal').style.display='block';
+  m.style.display='block';
 }
 document.getElementById('gameover-yes').onclick=()=>location.reload();
 document.getElementById('gameover-no').onclick =()=>document.getElementById('gameover-modal').style.display='none';
 
 /* ======================================
- * start / UI
+ * Game start / UI
  * ====================================== */
 const startBtn=document.getElementById('start-game');
 const p1Lbl=document.getElementById('player-1');
@@ -333,25 +318,23 @@ const p2Lbl=document.getElementById('player-2');
 
 startBtn.addEventListener('click',()=>{
   if(gameOn){
-    const cm=document.getElementById("confirmation-modal");
-    cm.style.display="block";
-    document.getElementById("confirm-yes").onclick =()=>location.reload();
-    document.getElementById("confirm-no").onclick  =()=>cm.style.display="none";
+    const c=document.getElementById("confirmation-modal");
+    c.style.display="block";
+    document.getElementById("confirm-yes").onclick=()=>location.reload();
+    document.getElementById("confirm-no").onclick =()=>c.style.display="none";
     return;
   }
   shuffleDeck(); dealCards(); gameOn=true; playerOneActive=true;
 
   p1Lbl.outerHTML='<div id="player-1-btn" class="player-static">Player 1 Turn / Press to Finish</div>';
-  p2Lbl.outerHTML='<div id="player-2-btn" class="player-static">Player 2</div>';
-  updateTurn();
+  p2Lbl.outerHTML='<div id="player-2-btn" class="player-static">Player 2</div>'; updateTurn();
 
   const fc=document.getElementById('finish-round-container'); fc.innerHTML='';
-  const btn=document.createElement('button');
-  btn.className='player-button'; btn.id='finish-round'; btn.textContent='Press to Finish Round';
+  const btn=document.createElement('button'); btn.className='player-button';btn.id='finish-round';btn.textContent='Press to Finish Round';
   fc.appendChild(btn); btn.addEventListener('click',finishRound);
 });
 
-/* keep spacing on resize */
+/* ---------- keep spacing on window resize ---------- */
 window.addEventListener('resize',()=>{
   adjustCardSpacing(document.getElementById("player1-cards"));
   adjustCardSpacing(document.getElementById("player2-cards"));
