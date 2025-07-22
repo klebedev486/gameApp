@@ -1,20 +1,26 @@
-const RANKS = ["6", "7", "8", "9", "10", "11", "12", "13", "14"]; 
-// 11=Jack, 12=Queen, 13=King, 14=Ace
+/* ======================================
+ * Durak — full array-driven game logic
+ * ====================================== */
+
+/* ---------- card constants ---------- */
+const RANKS = ["6", "7", "8", "9", "10", "11", "12", "13", "14"]; // 11=J,12=Q,13=K,14=A
 const SUITS = ["clubs", "diamonds", "hearts", "spades"];
 
+/* ---------- build & shuffle deck ---------- */
 function createDeck() {
     const deck = [];
     for (const suit of SUITS) {
         for (const rank of RANKS) {
-            const image = `./cardImages/${suit}${rank}.png`;
-            deck.push({ rank: rank, suit: suit, image: image });
+            deck.push({
+                rank,
+                suit,
+                image: `./cardImages/${suit}${rank}.png`
+            });
         }
     }
     return deck;
 }
-
 let deck = createDeck();
-
 
 function shuffleDeck() {
     for (let i = deck.length - 1; i > 0; i--) {
@@ -23,608 +29,350 @@ function shuffleDeck() {
     }
 }
 
-// Four key game state arrays
-let player1Cards = [];
-let player2Cards = [];
-let gameAreaCards = [];
-let discardPile = [];
-let currentTurnRank = null;
-let trumpSuit = null;
-let trumpCardData = null;
+/* ---------- game-state arrays ---------- */
+let player1Cards   = [];          // purely data, not DOM nodes
+let player2Cards   = [];
+let gameAreaCards  = [];          // [{ attacker:{…}, defender:{…}|null }, …]
+let discardPile    = [];
 
-/* ---------- mobile-drag helpers ---------- */
-let dragGhost = null;          // the floating image
-let pointerCard = null;        // the original card being dragged
+/* ---------- other state ---------- */
+let trumpSuit       = null;
+let trumpCardData   = null;
+let playerOneActive = false;      // true = P1 attacking
+let gameOn          = false;
+
+/* ---------- drag-helper vars ---------- */
+let dragGhost   = null;
+let pointerCard = null;
+
+/* ======================================
+ * Utility / UI helpers
+ * ====================================== */
 
 function updateTurn() {
     const p1Label = document.getElementById('player-1-btn') || document.getElementById('player-1');
     const p2Label = document.getElementById('player-2-btn') || document.getElementById('player-2');
 
-        if (playerOneActive) {           // Player 1 is attacking
-            p1Label.textContent = 'Player 1 Turn';
-            p2Label.textContent = 'Player 2';
-        } else {                         // Player 2 is attacking
-            p1Label.textContent = 'Player 1';
-            p2Label.textContent = 'Player 2 Turn';
-        }
-} 
-
-/* ------------  PLAYER-OF-CARD HELPERS  ------------ */
-function isCardFromPlayer1(cardEl) {
-    return cardEl.closest('#player1-cards') !== null;
-}
-function isCardFromPlayer2(cardEl) {
-    return cardEl.closest('#player2-cards') !== null;
+    if (playerOneActive) {
+        p1Label.textContent = 'Player 1 Turn';
+        p2Label.textContent = 'Player 2';
+    } else {
+        p1Label.textContent = 'Player 1';
+        p2Label.textContent = 'Player 2 Turn';
+    }
 }
 
-function collectCards(card) {
-    const collectedCards = [card];
-    Array.from(card.children).forEach(child => {
-        if (child.classList.contains("card-div")) {
-            collectedCards.push(...collectCards(child));
-        }
-    });
-    return collectedCards;
-}
+function isCardFromPlayer1(el) { return el.closest('#player1-cards'); }
+function isCardFromPlayer2(el) { return el.closest('#player2-cards'); }
 
 function hideDeckBack() {
     const back = document.getElementById("deck-back-image");
-    if (back && !back.classList.contains("invisible")) {
-        back.classList.add("invisible");   // layout stays intact
-    }
+    if (back && !back.classList.contains("invisible")) back.classList.add("invisible");
 }
 
 function adjustCardSpacing(container) {
     if (!container || !container.children.length) return;
 
-    const cardW  = container.children[0].offsetWidth;            // 100px
+    const cardW  = container.children[0].offsetWidth;  // 100px
     const count  = container.children.length;
-    const midW   = container.parentElement.clientWidth;          // .cards-area
+    const midW   = container.parentElement.clientWidth;
     const maxGap = 15;
 
-    const natural = cardW * count;                               // no gaps
+    const natural = cardW * count;
     let gap;
-
-    /* Fit comfortably with 15-px gaps */
-    if (natural + maxGap * (count - 1) <= midW) {
-        gap = maxGap;
-    }
-    /* Fit only with a smaller positive gap */
-    else if (natural <= midW) {
-        gap = (midW - natural) / (count - 1);
-    }
-    /* Won’t fit — switch to fixed overlap */
-    else {
-        gap = -40;
-    }
+    if (natural + maxGap * (count - 1) <= midW)       gap = maxGap;
+    else if (natural <= midW)                         gap = (midW - natural) / (count - 1);
+    else                                              gap = -40;
 
     Array.from(container.children).forEach((c, i) => {
         c.style.marginRight = i === count - 1 ? '0px' : gap + 'px';
     });
 }
 
-function checkGameEnd() {
-    const p1Count = document.querySelectorAll('#player1-cards .card-div').length;
-    const p2Count = document.querySelectorAll('#player2-cards .card-div').length;
-    const deckEmpty = deck.length === 0 && !trumpCardData;   // no face-down cards, no trump left
-
-    if (!deckEmpty) return;                                  // can’t finish while pile exists
-
-    let resultText = '';
-    if (p1Count === 0 && p2Count === 0) {
-        resultText = "It's a draw!";
-    } else if (p1Count === 0) {
-        resultText = "Player 1 wins!";
-    } else if (p2Count === 0) {
-        resultText = "Player 2 wins!";
-    } else {
-        return; // no one is empty yet
-    }
-
-    // Show the modal
-    const modal = document.getElementById('gameover-modal');
-    document.getElementById('gameover-text').textContent = resultText + '  Start a new game?';
-    modal.style.display = 'block';
-}
-
-/* ----------  Game-over modal buttons  ---------- */
-document.getElementById('gameover-yes').onclick = function () {
-    location.reload();                         // quick way to reset everything
-};
-document.getElementById('gameover-no').onclick = function () {
-    document.getElementById('gameover-modal').style.display = 'none';
-};
-
+/* ======================================
+ * Card DOM creation
+ * ====================================== */
 function createCardDiv(card, containerId) {
     const container = document.getElementById(containerId);
+
     const cardDiv = document.createElement("div");
-    cardDiv.className = "card-div";
-    cardDiv.id = `${card.rank}-${card.suit}`;
-    cardDiv.draggable = true;
-    cardDiv.setAttribute('data-rank', card.rank);
-    cardDiv.setAttribute('data-suit', card.suit);
+    cardDiv.className  = "card-div";
+    cardDiv.id         = card.id || `${card.rank}-${card.suit}`;
+    cardDiv.draggable  = true;
+    cardDiv.dataset.rank = card.rank;
+    cardDiv.dataset.suit = card.suit;
     cardDiv.addEventListener('dragstart', dragStart);
+    cardDiv.addEventListener('pointerdown', pointerDown); // touch / pen
 
-    /* NEW: touch / pen / universal pointer support */
-    cardDiv.addEventListener('pointerdown', pointerDown);
+    const img = document.createElement("img");
+    img.src   = card.image;
+    img.alt   = `${card.rank} of ${card.suit}`;
+    img.style.width  = "100px";
+    img.style.height = "150px";
+    cardDiv.appendChild(img);
 
-    const cardImg = document.createElement("img");
-    cardImg.src = card.image;
-    cardImg.alt = `${card.rank} of ${card.suit}`;
-    cardImg.style.width = "100px";
-    cardImg.style.height = "150px";
-
-    cardDiv.appendChild(cardImg);
     if (containerId === "game-area-cards") {
         cardDiv.addEventListener("dragover", allowDrop);
-        cardDiv.addEventListener("drop", beatCard); // We will define beatCard() next
+        cardDiv.addEventListener("drop", beatCard);
     }
+
     container.appendChild(cardDiv);
-
-    cardImg.onload = () => {
-        adjustCardSpacing(container);
-    };
-    cardDiv.style.marginRight = "0px";
+    img.onload = () => adjustCardSpacing(container);
 }
 
+/* ======================================
+ * Initial deal
+ * ====================================== */
 function dealCards() {
-    /* --------  Deal 6 cards each from the top of the deck  -------- */
-    const player1 = deck.splice(0, 6);     // first 6 → Player 1
-    const player2 = deck.splice(0, 6);     // next 6 → Player 2
+    const p1 = deck.splice(0, 6);
+    const p2 = deck.splice(0, 6);
 
-    /* --------  Take the next card as the face-up trump  -------- */
-    const trumpCard = deck.shift();        // remove from deck
-    trumpCardData   = trumpCard;           // **save** for late draw
-    trumpSuit       = trumpCard.suit;      // global suit for rules
+    p1.forEach(c => { player1Cards.push(c); createCardDiv(c, "player1-cards"); });
+    p2.forEach(c => { player2Cards.push(c); createCardDiv(c, "player2-cards"); });
 
-    /* --------  Render both players’ hands  -------- */
-    player1.forEach(card => createCardDiv(card, "player1-cards"));
-    player2.forEach(card => createCardDiv(card, "player2-cards"));
+    const trump = deck.shift();
+    trumpCardData = trump;
+    trumpSuit     = trump.suit;
 
-    /* --------  Render the face-up trump image  -------- */
-    const deckContainer = document.getElementById("deck");
+    /* show face-up trump */
+    const tc = document.createElement("div");
+    tc.id = "trump-card-container";
+    tc.style.position = "absolute"; tc.style.top = "60%"; tc.style.left = "60%";
+    tc.style.pointerEvents = "none";
+    const ti = document.createElement("img");
+    ti.src = trump.image; ti.alt = "";
+    ti.style.width="90px";ti.style.height="140px";ti.style.border="2px solid gold";ti.style.borderRadius="5px";
+    tc.appendChild(ti);
+    document.getElementById("deck").appendChild(tc);
 
-    const trumpDiv       = document.createElement("div");
-    trumpDiv.id          = "trump-card-container";   // so we can remove it later
-    trumpDiv.style.position = "absolute";
-    trumpDiv.style.top      = "60%";
-    trumpDiv.style.left     = "60%";
-    trumpDiv.style.pointerEvents = "none";           // prevent dragging
-
-    const trumpImg = document.createElement("img");
-    trumpImg.src   = trumpCard.image;
-    trumpImg.alt   = `${trumpCard.rank} of ${trumpCard.suit}`;
-    trumpImg.style.width        = "90px";
-    trumpImg.style.height       = "140px";
-    trumpImg.style.border       = "2px solid gold";
-    trumpImg.style.borderRadius = "5px";
-    trumpImg.draggable = false;
-
-    trumpDiv.appendChild(trumpImg);
-    deckContainer.appendChild(trumpDiv);
-
-    console.log("Trump suit is:", trumpSuit);
-
-    /* --------  Placeholder text in the game area  -------- */
-    const gameArea       = document.getElementById("game-area-cards");
-    const instructionTxt = document.createElement("h2");
-    instructionTxt.textContent      = "Click/Select Cards and Drag/Drop HERE";
-    instructionTxt.style.color      = "rgba(0,0,0,0.5)";
-    instructionTxt.style.pointerEvents = "none";
-
-    // gameArea.style.border        = "2px dashed black";
-    gameArea.style.justifyContent = "center";
-    gameArea.style.alignItems    = "center";
-    gameArea.appendChild(instructionTxt);
+    /* placeholder */
+    const ga = document.getElementById("game-area-cards");
+    const txt = document.createElement("h2");
+    txt.textContent = "Click/Select Cards and Drag/Drop HERE";
+    txt.style.color="rgba(0,0,0,0.5)";txt.style.pointerEvents="none";
+    ga.style.justifyContent="center";ga.style.alignItems="center";
+    ga.appendChild(txt);
 }
 
-function dragStart(event) {
-    event.dataTransfer.setData("text/plain", event.currentTarget.id);
-}
+/* ======================================
+ * Drag & Drop
+ * ====================================== */
+function dragStart(e){ e.dataTransfer.setData("text/plain", e.currentTarget.id); }
+function allowDrop(e){ e.preventDefault(); }
 
-function allowDrop(event) {
-    event.preventDefault();
-    console.log("allowDrop triggered");
-}
-
-/* ========= GHOST SETUP ========= */
-function createDragGhost(card) {
+/* Ghost helpers for touch */
+function createDragGhost(card){
     dragGhost = card.cloneNode(true);
-    dragGhost.style.position = 'fixed';
-    dragGhost.style.pointerEvents = 'none';
-    dragGhost.style.opacity = '0.8';
-    dragGhost.style.zIndex = '9999';
+    Object.assign(dragGhost.style,{position:'fixed',pointerEvents:'none',opacity:'0.8',zIndex:'9999'});
     document.body.appendChild(dragGhost);
 }
+function moveDragGhost(x,y){ if(dragGhost){dragGhost.style.left=x-50+'px';dragGhost.style.top=y-75+'px';}}
+function removeDragGhost(){ if(dragGhost){dragGhost.remove();dragGhost=null;} }
 
-function moveDragGhost(x, y) {
-    if (dragGhost) {
-        dragGhost.style.left = x - 50 + 'px';   // centers 100×150 card
-        dragGhost.style.top  = y - 75 + 'px';
-    }
-}
-
-function removeDragGhost() {
-    if (dragGhost) {
-        dragGhost.remove();
-        dragGhost = null;
-    }
-}
-
-/* ========= POINTER EVENTS (touch + pen + mouse) ========= */
-function pointerDown(e) {
-    /* 1️⃣  Ignore desktop mouse drags—native HTML-drag handles those */
-    if (e.pointerType === 'mouse') return;
-
-    /* 2️⃣  Prevent the page itself from scrolling while dragging */
+function pointerDown(e){
+    if(e.pointerType==='mouse')return;
     e.preventDefault();
-
-    /* 3️⃣  Record the card being dragged and capture the pointer */
     pointerCard = e.currentTarget;
     pointerCard.setPointerCapture(e.pointerId);
-
-    /* 4️⃣  Create a semi-transparent “ghost” that follows the finger */
-    createDragGhost(pointerCard);
-    moveDragGhost(e.clientX, e.clientY);
-
-    /* 5️⃣  Listen for movement and lift-off */
-    pointerCard.addEventListener('pointermove', pointerMove);
-    pointerCard.addEventListener('pointerup',   pointerUp);
+    createDragGhost(pointerCard); moveDragGhost(e.clientX,e.clientY);
+    pointerCard.addEventListener('pointermove',pointerMove);
+    pointerCard.addEventListener('pointerup',pointerUp);
 }
+function pointerMove(e){ moveDragGhost(e.clientX,e.clientY); }
+function pointerUp(e){
+    moveDragGhost(e.clientX,e.clientY); removeDragGhost();
+    pointerCard.style.visibility='hidden';
+    const elem = document.elementFromPoint(e.clientX,e.clientY);
+    pointerCard.style.visibility='visible';
 
-function pointerMove(e) {
-    moveDragGhost(e.clientX, e.clientY);
-}
-
-function pointerUp(e) {
-    /*  keep ghost aligned until lift-off  */
-    moveDragGhost(e.clientX, e.clientY);
-    removeDragGhost();
-
-    /* ---- detect what’s underneath ---- */
-    pointerCard.style.visibility = 'hidden';                   // hide source
-    const rawElem  = document.elementFromPoint(e.clientX, e.clientY);
-    pointerCard.style.visibility = 'visible';
-
-    let handled = false;
-
-    if (rawElem) {
-        /* 1️⃣  DEFENSE: attacker card under finger? */
-        const attackerCard = rawElem.closest &&
-                             rawElem.closest('#game-area-cards .card-div');
-
-        if (attackerCard && attackerCard !== pointerCard) {    // not self
-            beatCard({
-                preventDefault() {},
-                dataTransfer: { getData: () => pointerCard.id },
-                currentTarget: attackerCard
-            });
-            handled = true;
-        }
-
-        /* 2️⃣  ATTACK: finger over empty table area */
-        if (!handled) {
-            const table = rawElem.closest &&
-                          rawElem.closest('#game-area-cards');
-            if (table) {
-                drop({
-                    preventDefault() {},
-                    dataTransfer: { getData: () => pointerCard.id },
-                    target: table
-                });
+    if(elem){
+        const atk = elem.closest('#game-area-cards .card-div');
+        if(atk && atk!==pointerCard){
+            beatCard({preventDefault(){},dataTransfer:{getData:()=>pointerCard.id},currentTarget:atk});
+        }else{
+            const table = elem.closest('#game-area-cards');
+            if(table){
+                drop({preventDefault(){},dataTransfer:{getData:()=>pointerCard.id},target:table});
             }
         }
     }
-
-    /* ----- clean up pointer capture & listeners ----- */
     pointerCard.releasePointerCapture(e.pointerId);
-    pointerCard.removeEventListener('pointermove', pointerMove);
-    pointerCard.removeEventListener('pointerup',   pointerUp);
-    pointerCard = null;
+    pointerCard.removeEventListener('pointermove',pointerMove);
+    pointerCard.removeEventListener('pointerup',pointerUp);
+    pointerCard=null;
 }
 
-
-
-
-function isValidAttackRank(rank) {
-    const allRanks = [...document.querySelectorAll("#game-area-cards .card-div")]
-        .map(card => card.getAttribute("data-rank"));
-    return allRanks.includes(rank);
+/* ---------- rank helper (array-based) ---------- */
+function isValidAttackRank(rank){
+    return gameAreaCards.some(s =>
+        s.attacker.rank === rank ||
+        (s.defender && s.defender.rank === rank)
+    );
 }
 
+/* ======================================
+ * drop() — attacker plays a card
+ * ====================================== */
+function drop(e){
+    e.preventDefault();
+    const id = e.dataTransfer.getData("text/plain");
+    const cardEl = document.getElementById(id);
+    if(!cardEl) return;
 
-function drop(event) {
-    event.preventDefault();
-    if (turnPhase !== "attack") return;
+    /* turn guards */
+    if(playerOneActive && !isCardFromPlayer1(cardEl)) return;
+    if(!playerOneActive && !isCardFromPlayer2(cardEl)) return;
 
-    const cardId      = event.dataTransfer.getData("text/plain");
-    const draggedCard = document.getElementById(cardId);
-    if (!draggedCard) return;
+    const rank = cardEl.dataset.rank;
+    const suit = cardEl.dataset.suit;
+    const img  = cardEl.querySelector("img").src;
 
-    if (playerOneActive && !isCardFromPlayer1(draggedCard)) return;
-    if (!playerOneActive && !isCardFromPlayer2(draggedCard)) return;
+    if(gameAreaCards.length && !isValidAttackRank(rank)) return;
 
-    const rank = draggedCard.getAttribute("data-rank");
-    const suit = draggedCard.getAttribute("data-suit");
-    const img  = draggedCard.querySelector("img").src;
+    const placeholder = document.querySelector("#game-area-cards h2");
+    if(placeholder) placeholder.remove();
 
-    if (gameAreaCards.length !== 0 && !isValidAttackRank(rank)) return;
+    e.target.appendChild(cardEl);
+    cardEl.addEventListener("dragover",allowDrop);
+    cardEl.addEventListener("drop",beatCard);
 
-    // first card sets the working rank
-    if (gameAreaCards.length === 0) currentTurnRank = rank;
-
-    // ⬇️ render
-    const instruction = document.querySelector("#game-area-cards h2");
-    if (instruction) instruction.remove();
-    event.target.appendChild(draggedCard);
-    draggedCard.addEventListener("dragover", allowDrop);
-    draggedCard.addEventListener("drop", beatCard);
-
-    // ⬇️ array
     gameAreaCards.push({
-        attacker: { rank, suit, id: cardId, image: img },
-        defender: null
+        attacker:{rank,suit,id,image:img},
+        defender:null
     });
+    adjustCardSpacing(document.getElementById('game-area-cards'));
 }
 
+/* ======================================
+ * beatCard() — defender covers attacker
+ * ====================================== */
+function beatCard(e){
+    e.preventDefault();
+    const defId = e.dataTransfer.getData("text/plain");
+    const defEl = document.getElementById(defId);
+    const atkEl = e.currentTarget;
+    if(!defEl || atkEl.children.length>1) return;
 
-function beatCard(event) {
-    event.preventDefault();
+    if(playerOneActive && isCardFromPlayer1(defEl)) return;
+    if(!playerOneActive && isCardFromPlayer2(defEl)) return;
 
-    const defenderId  = event.dataTransfer.getData("text/plain");
-    const defenderEl  = document.getElementById(defenderId);
-    const attackerEl  = event.currentTarget;
-
-    if (!defenderEl || attackerEl.children.length > 1) return;
-
-    if (playerOneActive && isCardFromPlayer1(defenderEl)) return;
-    if (!playerOneActive && isCardFromPlayer2(defenderEl)) return;
-
-    const defRank = +defenderEl.dataset.rank;
-    const defSuit = defenderEl.dataset.suit;
-    const attRank = +attackerEl.dataset.rank;
-    const attSuit = attackerEl.dataset.suit;
+    const defRank=+defEl.dataset.rank, defSuit=defEl.dataset.suit;
+    const attRank=+atkEl.dataset.rank, attSuit=atkEl.dataset.suit;
 
     const ok =
-        (defSuit === attSuit && defRank > attRank) ||
-        (defSuit === trumpSuit && attSuit !== trumpSuit) ||
-        (defSuit === trumpSuit && attSuit === trumpSuit && defRank > attRank);
+        (defSuit===attSuit && defRank>attRank) ||
+        (defSuit===trumpSuit && attSuit!==trumpSuit) ||
+        (defSuit===trumpSuit && attSuit===trumpSuit && defRank>attRank);
+    if(!ok) return;
 
-    if (!ok) return;
+    atkEl.appendChild(defEl);
+    Object.assign(defEl.style,{position:"absolute",top:"20px",left:"20px"});
 
-    // --- UI ---
-    attackerEl.appendChild(defenderEl);
-    defenderEl.style.position = "absolute";
-    defenderEl.style.top  = "20px";
-    defenderEl.style.left = "20px";
-
-    // --- array ---
-    const img = defenderEl.querySelector("img").src;
-    const stack = gameAreaCards.find(s => s.attacker.id === attackerEl.id);
-    if (stack) {
-        stack.defender = { rank: defRank.toString(), suit: defSuit, id: defenderId, image: img };
+    const img = defEl.querySelector("img").src;
+    const stack = gameAreaCards.find(s => s.attacker.id===atkEl.id);
+    if(stack){
+        stack.defender={rank:defRank.toString(),suit:defSuit,id:defId,image:img};
     }
 }
 
-function discardGameAreaCards() {
-    const gameArea = document.getElementById("game-area-cards");
+/* ======================================
+ * finishRound() — resolve table
+ * ====================================== */
+function finishRound(){
+    const defenderFailed = gameAreaCards.some(s => !s.defender);
+    const defenderHandId = playerOneActive ? "player2-cards" : "player1-cards";
+    const defenderHandEl = document.getElementById(defenderHandId);
 
-    gameAreaCards.forEach(stack => {
-        /* attacker is always present */
-        discardPile.push({ rank: stack.attacker.rank, suit: stack.attacker.suit });
-        const attackerEl = document.getElementById(stack.attacker.id);
-        if (attackerEl && gameArea.contains(attackerEl)) gameArea.removeChild(attackerEl);
-
-        /* defender may be null */
-        if (stack.defender) {
-            discardPile.push({ rank: stack.defender.rank, suit: stack.defender.suit });
-            // defender element is nested inside attacker; attacker removal already handled it
-        }
-    });
-
-    gameAreaCards = [];                                   // reset for next round
-    console.log("Discard Pile Count:", discardPile.length);
-}
-
-
-
-function refillPlayerHands() {
-    var MAX_HAND = 6;
-
-    /* -------- Decide draw order (next attacker first) -------- */
-    var sequence = playerOneActive
-        ? [                                     // Player 1 attacks next
-            { id: 'player1-cards', arr: player1Cards },
-            { id: 'player2-cards', arr: player2Cards }
-          ]
-        : [                                     // Player 2 attacks next
-            { id: 'player2-cards', arr: player2Cards },
-            { id: 'player1-cards', arr: player1Cards }
-          ];
-
-    /* -------- Deal cards in that order -------- */
-    sequence.forEach(function (player) {
-        var currentCount = document.querySelectorAll(
-            '#' + player.id + ' .card-div'
-        ).length;
-        var need = MAX_HAND - currentCount;
-
-        while (need > 0) {
-            var newCard = null;
-
-            if (deck.length > 0) {              /* draw from face-down pile */
-                newCard = deck.shift();
-            } else if (trumpCardData) {         /* pile empty → take trump */
-                newCard       = trumpCardData;
-                trumpCardData = null;           /* trump is now gone */
-
-                var trumpImg = document.getElementById('trump-card-container');
-                if (trumpImg) trumpImg.remove();
-            } else {
-                break;                          /* no cards left anywhere */
-            }
-
-            player.arr.push(newCard);           /* track in player array   */
-            createCardDiv(newCard, player.id);  /* render to DOM           */
-            need--;
-        }
-    });
-
-    /* -------- Hide deck back once pile is empty -------- */
-    if (deck.length === 0) hideDeckBack();
-}
-
-
-let gameOn = false;
-let playerOneActive = false;
-let turnPhase = "attack";
-
-const startGameButton = document.getElementById('start-game');
-const playerOneElement = document.getElementById('player-1');
-const playerTwoElement = document.getElementById('player-2');
-
-let player1Button;
-let player2Button;
-
-function restartUi() {
-    if (gameOn) {
-        const modal = document.getElementById("confirmation-modal");
-        modal.style.display = "block"; // Show modal
-
-        // Handle the "Yes" button click
-        document.getElementById("confirm-yes").onclick = function () {
-            modal.style.display = "none";
-            location.reload(); // Restart game
-        };
-
-        // Handle the "No" button click
-        document.getElementById("confirm-no").onclick = function () {
-            modal.style.display = "none"; // Close modal
-        };
-    }
-}
-
-startGameButton.addEventListener('click', () => {
-    if (gameOn) {
-        restartUi(); // Only show confirmation modal if game is already running
-    } else {
-        shuffleDeck();
-        dealCards();
-        console.log('The game has started!');
-        gameOn = true;
-        playerOneActive = true;
-
-        // Update player elements to buttons after the game starts
-        playerOneElement.outerHTML = `<div id="player-1-btn" class="player-static">Player 1 Turn / Press to Finish</div>`;
-        playerTwoElement.outerHTML = `<div id="player-2-btn" class="player-static">Player 2</div>`;
-
-        player1Button = document.getElementById('player-1-btn');
-        player2Button = document.getElementById('player-2-btn');
-
-        const player1Cards = document.getElementById('player1-cards');
-        const player2Cards = document.getElementById('player2-cards');
-        
-
-        // Enable dragging for player cards
-        function enableDragging(cardsElement) {
-            if (cardsElement) {
-                cardsElement.querySelectorAll('*').forEach(element => {
-                    element.draggable = true;
-                });
-            }
-        }
-
-        enableDragging(player1Cards);
-        enableDragging(player2Cards);
-
-        const finishRoundContainer = document.getElementById('finish-round-container');
-        // Clear any existing button first (to avoid duplicates)
-        finishRoundContainer.innerHTML = '';
-
-        const finishRoundButton = document.createElement('button');
-        finishRoundButton.className = 'player-button';
-        finishRoundButton.id = 'finish-round';
-        finishRoundButton.textContent = 'Press to Finish Round';
-        finishRoundContainer.appendChild(finishRoundButton);
-
-        // Use the unified finishRound function
-        finishRoundButton.addEventListener('click', () => {
-            finishRound(); // This now calls the complete function we created
-        });
-
-            updateTurn();
-        }
-});
-
-
-function finishRound() {
-    /* ── 1. Success or failure? ────────────────────────────── */
-    const defenderFailed = gameAreaCards.some(s => s.defender === null);
-
-    /* Helper: move existing element or recreate it */
-    function transferCard(cardObj, targetId) {
-        const target = document.getElementById(targetId);
-        let el       = document.getElementById(cardObj.id);
-
-        if (el) {
-            // scrub inline coords left over from defense
-            el.style.position = "";
-            el.style.top = el.style.left = "";
-            target.appendChild(el);           // physical move, no clone
-        } else {
-            // (shouldn’t happen, but safe fallback)
-            createCardDiv(
-                { rank: cardObj.rank, suit: cardObj.suit, image: cardObj.image, id: cardObj.id },
-                targetId
-            );
+    function moveOrRecreate(cardObj, destEl){
+        let el = document.getElementById(cardObj.id);
+        if(el){
+            el.style.position=""; el.style.top=el.style.left="";
+            destEl.appendChild(el);
+        }else{
+            createCardDiv(cardObj,destEl.id);
         }
     }
 
-    /* ── 2A. Defender fails → pick up everything ───────────── */
-    if (defenderFailed) {
-        const defenderId = playerOneActive ? "player2-cards" : "player1-cards";
-
-        gameAreaCards.forEach(stack => {
-            [stack.attacker, stack.defender]
-              .filter(Boolean)
-              .forEach(c => transferCard(c, defenderId));
-        });
-
-        console.log("Defender takes all cards – attacker keeps the turn.");
-    }
-
-    /* ── 2B. All beaten → discard & swap roles ─────────────── */
-    else {
-        gameAreaCards.forEach(stack => {
-            [stack.attacker, stack.defender]
-              .filter(Boolean)
-              .forEach(c => {
-                  discardPile.push({ rank: c.rank, suit: c.suit });
-                  const el = document.getElementById(c.id);
-                  if (el && el.parentElement) el.parentElement.removeChild(el);
-              });
-        });
-
+    if(defenderFailed){
+        gameAreaCards.forEach(stk => [stk.attacker, stk.defender].filter(Boolean)
+            .forEach(c => moveOrRecreate(c, defenderHandEl)));
+        console.log("Defender takes all cards – attacker keeps turn.");
+    }else{
+        gameAreaCards.forEach(stk => [stk.attacker, stk.defender].filter(Boolean)
+            .forEach(c =>{
+                discardPile.push({rank:c.rank,suit:c.suit});
+                const el=document.getElementById(c.id);
+                if(el && el.parentElement) el.parentElement.removeChild(el);
+            }));
         console.log("All cards beaten – defender becomes attacker.");
         playerOneActive = !playerOneActive;
     }
 
-    /* ── 3. Common cleanup ─────────────────────────────────── */
+    adjustCardSpacing(defenderHandEl);
     gameAreaCards = [];
-    currentTurnRank = null;
-
     refillPlayerHands();
     updateTurn();
     checkGameEnd();
 }
 
+/* ======================================
+ * Refill hands after round
+ * ====================================== */
+function refillPlayerHands(){
+    const MAX = 6;
+    const order = playerOneActive
+        ? [{id:'player1-cards',arr:player1Cards},
+           {id:'player2-cards',arr:player2Cards}]
+        : [{id:'player2-cards',arr:player2Cards},
+           {id:'player1-cards',arr:player1Cards}];
 
+    order.forEach(p=>{
+        let need = MAX - document.querySelectorAll('#'+p.id+' .card-div').length;
+        while(need>0){
+            let card=null;
+            if(deck.length) card=deck.shift();
+            else if(trumpCardData){ card=trumpCardData; trumpCardData=null;
+                const t=document.getElementById('trump-card-container'); if(t)t.remove();
+            }else break;
 
+            p.arr.push(card); createCardDiv(card,p.id); need--;
+        }
+        adjustCardSpacing(document.getElementById(p.id));
+    });
+    if(!deck.length) hideDeckBack();
+}
 
-// On Resize
-window.addEventListener('resize', () => {
-    const player1Container = document.getElementById("player1-cards");
-    const player2Container = document.getElementById("player2-cards");
-    if (player1Container) adjustCardSpacing(player1Container);
-    if (player2Container) adjustCardSpacing(player2Container);
+/* ======================================
+ * Game start / UI buttons
+ * ====================================== */
+const startBtn = document.getElementById('start-game');
+const p1Label  = document.getElementById('player-1');
+const p2Label  = document.getElementById('player-2');
+
+startBtn.addEventListener('click',()=>{
+    if(gameOn){
+        document.getElementById("confirmation-modal").style.display="block";
+        document.getElementById("confirm-yes").onclick = ()=>location.reload();
+        document.getElementById("confirm-no").onclick  = ()=>{document.getElementById("confirmation-modal").style.display="none";};
+        return;
+    }
+    shuffleDeck(); dealCards();
+    gameOn=true; playerOneActive=true;
+
+    p1Label.outerHTML=`<div id="player-1-btn" class="player-static">Player 1 Turn / Press to Finish</div>`;
+    p2Label.outerHTML=`<div id="player-2-btn" class="player-static">Player 2</div>`;
+    updateTurn();
+
+    const finishCont = document.getElementById('finish-round-container');
+    finishCont.innerHTML='';
+    const frBtn = document.createElement('button');
+    frBtn.className='player-button';frBtn.id='finish-round';frBtn.textContent='Press to Finish Round';
+    finishCont.appendChild(frBtn);
+    frBtn.addEventListener('click',finishRound);
+});
+
+/* ---------- resize adjust ---------- */
+window.addEventListener('resize',()=>{
+    adjustCardSpacing(document.getElementById("player1-cards"));
+    adjustCardSpacing(document.getElementById("player2-cards"));
 });
