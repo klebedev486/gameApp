@@ -31,6 +31,7 @@ let discardPile = [];
 let currentTurnRank = null;
 let trumpSuit = null;
 let trumpCardData = null;
+
 /* ---------- mobile-drag helpers ---------- */
 let dragGhost = null;          // the floating image
 let pointerCard = null;        // the original card being dragged
@@ -335,147 +336,116 @@ function isValidAttackRank(rank) {
 function drop(event) {
     event.preventDefault();
 
-    /* ----------  TURN-PHASE CHECK  ---------- */
-    if (turnPhase !== "attack") {
-        console.log("Cannot drop card at this phase.");
-        return;
-    }
+    /* ----------  TURN‑PHASE GUARD  ---------- */
+    if (turnPhase !== "attack") return;
 
-    const cardId = event.dataTransfer.getData("text/plain");
+    const cardId      = event.dataTransfer.getData("text/plain");
     const draggedCard = document.getElementById(cardId);
 
-    /* ----------  NEW ATTACKER-ONLY LOCK  ---------- */
-    // If it's Player 1's turn, the card must come from Player 1's hand.
-    if (playerOneActive && !isCardFromPlayer1(draggedCard)) {
-        console.log("Only Player 1 may attack this turn.");
-        return;
-    }
-    // If it's Player 2's turn, the card must come from Player 2's hand.
-    if (!playerOneActive && !isCardFromPlayer2(draggedCard)) {
-        console.log("Only Player 2 may attack this turn.");
-        return;
-    }
+    /* ----------  WHO MAY ATTACK  ---------- */
+    if (playerOneActive && !isCardFromPlayer1(draggedCard)) return;
+    if (!playerOneActive && !isCardFromPlayer2(draggedCard)) return;
 
-    /* ----------  EXISTING RANK / TABLE LOGIC  ---------- */
+    /* ----------  VALID RANK CHECK  ---------- */
     if (draggedCard && event.target.id === "game-area-cards") {
         const rank = draggedCard.getAttribute("data-rank");
+        const suit = draggedCard.getAttribute("data-suit");
 
-        // First attack of the round can be any rank; follow-ups must match a rank already on the table
         if (gameAreaCards.length === 0) {
-            currentTurnRank = rank;
+            currentTurnRank = rank;                 // first attack sets the rank
         } else if (!isValidAttackRank(rank)) {
-            console.log("Invalid card rank for attack. Must match rank already on the table.");
+            console.log("Invalid rank for attack.");
             return;
         }
 
-        // Remove placeholder text after first card
+        /* ----------  RENDER ON TABLE  ---------- */
         const instruction = document.querySelector("#game-area-cards h2");
         if (instruction) instruction.remove();
 
-        // Move the card into the table
         event.target.appendChild(draggedCard);
-
-        // Make it a drop target for the defender
         draggedCard.addEventListener("dragover", allowDrop);
         draggedCard.addEventListener("drop", beatCard);
 
-        const suit = draggedCard.getAttribute("data-suit");
-        gameAreaCards.push({ rank, suit, id: cardId });
-
-        console.log(`Card moved to game area: ${cardId}`);
+        /* ----------  SAVE FULL STACK  ---------- */
+        gameAreaCards.push({
+            attacker: { rank, suit, id: cardId },
+            defender: null
+        });
     }
 }
+
 
 
 function beatCard(event) {
     event.preventDefault();
 
-    /* ----------  GRAB ELEMENTS  ---------- */
-    const defenderCardId = event.dataTransfer.getData("text/plain"); // the card being dragged
+    const defenderCardId = event.dataTransfer.getData("text/plain");
     const defenderCard   = document.getElementById(defenderCardId);
-    const attackerCard   = event.currentTarget;                      // the card already on table
+    const attackerCard   = event.currentTarget;          // top‑level card
 
-    /* ----------  DEFENDER-ONLY GUARD  ---------- */
-    // If Player 1 is currently attacking, only Player 2’s cards may beat.
-    if (playerOneActive && isCardFromPlayer1(defenderCard)) {
-        console.log("Attacker cannot beat their own cards.");
-        return;
-    }
-    // If Player 2 is currently attacking, only Player 1’s cards may beat.
-    if (!playerOneActive && isCardFromPlayer2(defenderCard)) {
-        console.log("Attacker cannot beat their own cards.");
-        return;
-    }
+    /* ----------  WHO MAY DEFEND  ---------- */
+    if (playerOneActive && isCardFromPlayer1(defenderCard)) return;
+    if (!playerOneActive && isCardFromPlayer2(defenderCard)) return;
 
-    /* ----------  PREVENT DOUBLE-BEATING  ---------- */
-    if (attackerCard.children.length > 1) {
-        console.log("This card has already been defended. Cannot beat it again.");
-        return;
-    }
+    /* ----------  ALREADY BEAT?  ---------- */
+    if (attackerCard.children.length > 1) return;
 
-    /* ----------  RANK / TRUMP VALIDATION  ---------- */
+    /* ----------  RANK & TRUMP VALIDATION  ---------- */
     const defRank = parseInt(defenderCard.getAttribute("data-rank"));
     const defSuit = defenderCard.getAttribute("data-suit");
     const attRank = parseInt(attackerCard.getAttribute("data-rank"));
     const attSuit = attackerCard.getAttribute("data-suit");
 
-    let validDefense = false;
+    let ok =
+        (defSuit === attSuit && defRank > attRank) ||                     // higher same suit
+        (defSuit === trumpSuit && attSuit !== trumpSuit) ||               // trump over non‑trump
+        (defSuit === trumpSuit && attSuit === trumpSuit && defRank > attRank); // higher trump
 
-    if (defSuit === attSuit && defRank > attRank) {
-        validDefense = true;                                   // higher same-suit card
-    } else if (defSuit === trumpSuit && attSuit !== trumpSuit) {
-        validDefense = true;                                   // any trump beats non-trump
-    } else if (defSuit === trumpSuit && attSuit === trumpSuit && defRank > attRank) {
-        validDefense = true;                                   // higher trump beats lower trump
+    if (!ok) {
+        console.log("Invalid defense.");
+        return;
     }
 
-    /* ----------  APPLY DEFENSE IF VALID  ---------- */
-    if (validDefense) {
-        attackerCard.appendChild(defenderCard);
-        defenderCard.style.position = "absolute";
-        defenderCard.style.top  = "20px";
-        defenderCard.style.left = "20px";
-        console.log(`${defenderCardId} successfully beat ${attackerCard.id}`);
-    } else {
-        console.log("Invalid move. Must beat by higher rank or trump rules.");
+    /* ----------  VISUALLY STACK THE CARD  ---------- */
+    attackerCard.appendChild(defenderCard);
+    defenderCard.style.position = "absolute";
+    defenderCard.style.top  = "20px";
+    defenderCard.style.left = "20px";
+
+    /* ----------  UPDATE THE DATA MODEL  ---------- */
+    const stack = gameAreaCards.find(
+        s => s.attacker.id === attackerCard.id && s.defender === null
+    );
+    if (stack) {
+        stack.defender = {
+            rank: defenderCard.getAttribute("data-rank"),
+            suit: defenderCard.getAttribute("data-suit"),
+            id: defenderCardId
+        };
     }
 }
+
 
 function discardGameAreaCards() {
     const gameArea = document.getElementById("game-area-cards");
-    const cards = Array.from(gameArea.children);
 
-    // Move each top-level card to the discard pile
-    cards.forEach(card => {
-        const allCards = collectCards(card);  // Collect all nested cards
+    gameAreaCards.forEach(stack => {
+        /* attacker is always present */
+        discardPile.push({ rank: stack.attacker.rank, suit: stack.attacker.suit });
+        const attackerEl = document.getElementById(stack.attacker.id);
+        if (attackerEl && gameArea.contains(attackerEl)) gameArea.removeChild(attackerEl);
 
-        allCards.forEach(nestedCard => {
-            const rank = nestedCard.getAttribute("data-rank");
-            const suit = nestedCard.getAttribute("data-suit");
-
-            if (rank && suit) {
-                console.log(`Discarding card: ${rank} of ${suit}`);
-                discardPile.push({ rank, suit });
-            }
-
-            // Safely remove the card from the game area
-            try {
-                if (gameArea.contains(nestedCard)) {
-                    gameArea.removeChild(nestedCard);
-                    console.log(`Removed ${rank} of ${suit} from game area`);
-                }
-            } catch (error) {
-                console.error("Error while removing card from game area during discard:", error);
-            }
-        });
+        /* defender may be null */
+        if (stack.defender) {
+            discardPile.push({ rank: stack.defender.rank, suit: stack.defender.suit });
+            // defender element is nested inside attacker; attacker removal already handled it
+        }
     });
 
-    // Clear the game area data array after moving all cards
-    gameAreaCards.length = 0;
-
-    // Log the updated discard pile count
-    console.log("Discard Pile Count After Discarding: ", discardPile.length);
+    gameAreaCards = [];                                   // reset for next round
+    console.log("Discard Pile Count:", discardPile.length);
 }
+
 
 
 function refillPlayerHands() {
@@ -607,54 +577,63 @@ startGameButton.addEventListener('click', () => {
 });
 
 
+/* -----------------------------------------------------------
+ *  FINISH ROUND  — array‑based logic
+ * -----------------------------------------------------------
+ *  - If ANY stack still has defender === null  → defender fails
+ *  - Otherwise everything is beaten            → discard & swap
+ */
 function finishRound() {
-    const gameArea  = document.getElementById("game-area-cards");
-    const topStacks = Array.from(gameArea.children);     // each attack stack
-    let unbeatenFound = false;
-
-    /* --- detect whether every stack was beaten --- */
-    topStacks.forEach(stack => {
-        const defended = Array.from(stack.children)
-            .some(child => child.classList.contains("card-div"));
-        if (!defended) unbeatenFound = true;             // at least one failed
-    });
+    /* 1️⃣  Is there at least one unbeaten attacker card? */
+    const unbeatenFound = gameAreaCards.some(stack => stack.defender === null);
 
     /* ----------  CASE 1 : defender failed → takes ALL stacks ---------- */
     if (unbeatenFound) {
         const defenderId = playerOneActive ? "player2-cards" : "player1-cards";
 
-        topStacks.forEach(stack => {
-            /* move entire stack to defender’s hand */
-            collectCards(stack).forEach(cardEl => {
-                const rank  = cardEl.getAttribute("data-rank");
-                const suit  = cardEl.getAttribute("data-suit");
-                const image = cardEl.querySelector("img").src;
+        /* move every attacker + defender card into defender’s hand */
+        gameAreaCards.forEach(stack => {
+            [stack.attacker, stack.defender]   // defender may be null
+              .filter(Boolean)                 // skip nulls
+              .forEach(cardObj => {
+                  const el    = document.getElementById(cardObj.id);
+                  const image = el.querySelector("img").src;
 
-                const data = { rank, suit, image, id: cardEl.id };
-                defenderId === "player1-cards" ? player1Cards.push(data)
-                                               : player2Cards.push(data);
-                createCardDiv(data, defenderId);
-            });
-            gameArea.removeChild(stack);
+                  const data = {
+                      rank: cardObj.rank,
+                      suit: cardObj.suit,
+                      image,
+                      id:   cardObj.id
+                  };
+                  defenderId === "player1-cards"
+                      ? player1Cards.push(data)
+                      : player2Cards.push(data);
+                  createCardDiv(data, defenderId);
+
+                  /* remove from table */
+                  if (el && el.parentElement) el.parentElement.removeChild(el);
+              });
         });
 
-        gameAreaCards.length = 0;                        // clear helper array
         console.log("Defender takes ALL cards. Attacker keeps the turn.");
-        /* attacker stays attacker */
+        /* attacker remains the same */
     }
 
-    /* ----------  CASE 2 : all beaten → discard table, swap roles ------ */
+    /* ----------  CASE 2 : everything beaten → discard & swap roles ----- */
     else {
-        discardGameAreaCards();
+        discardGameAreaCards();                // already uses gameAreaCards
         console.log("All cards beaten. Defender becomes attacker.");
-        playerOneActive = !playerOneActive;              // swap roles
+        playerOneActive = !playerOneActive;    // swap roles
     }
 
-    refillPlayerHands();      // draw up to 6 each
-    updateTurn();             // update heading labels
-    currentTurnRank = null;   // reset rank tracking
-    checkGameEnd();           // see if someone just won
+    /* ----------  round housekeeping ---------- */
+    gameAreaCards = [];                        // clear table state
+    refillPlayerHands();                       // draw up to 6
+    updateTurn();                              // refresh UI labels
+    currentTurnRank = null;                    // reset rank tracking
+    checkGameEnd();                            // someone win?
 }
+
 
 
 
